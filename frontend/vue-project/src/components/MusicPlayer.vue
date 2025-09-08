@@ -28,35 +28,38 @@ const formatTime = (time) => {
 </script>
 
 <template>
-  <div class="music-player" v-if="currentMusic">
+  <div class="music-player" v-if="currentVideo">
     <div class="player-info">
-      <h3>{{ currentMusic.title }}</h3>
+      <img :src="currentVideo.thumbnail" :alt="currentVideo.title" class="player-thumbnail">
+      <div class="player-details">
+        <h4 class="player-title">{{ currentVideo.title }}</h4>
+        <p class="player-channel">{{ currentVideo.channel }}</p>
+      </div>
     </div>
     
     <div class="player-controls">
-      <button @click="playPause" class="play-btn">
+      <button @click="togglePlay" class="control-btn">
         {{ isPlaying ? '⏸️' : '▶️' }}
       </button>
+      <button @click="stop" class="control-btn">⏹️</button>
+      
+      <div class="time-info">
+        <span>{{ Math.floor(currentTime / 60) }}:{{ (currentTime % 60).toString().padStart(2, '0') }}</span>
+        <span>{{ Math.floor(duration / 60) }}:{{ (duration % 60).toString().padStart(2, '0') }}</span>
+      </div>
+      
+      <div class="volume-control">
+        <span>🔊</span>
+        <input 
+          type="range" 
+          min="0" 
+          max="100" 
+          v-model="volume" 
+          @input="setVolume"
+          class="volume-slider"
+        >
+      </div>
     </div>
-    
-    <div class="progress-bar">
-      <span>{{ formatTime(currentTime) }}</span>
-      <input 
-        type="range" 
-        min="0" 
-        :max="duration" 
-        v-model="currentTime"
-        class="progress"
-      />
-      <span>{{ formatTime(duration) }}</span>
-    </div>
-    
-    <audio 
-      ref="audio"
-      @timeupdate="currentTime = $event.target.currentTime"
-      @loadedmetadata="duration = $event.target.duration"
-      @ended="isPlaying = false"
-    ></audio>
   </div>
 </template>
 
@@ -68,20 +71,61 @@ const formatTime = (time) => {
   right: 0;
   background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(10px);
-  padding: 1rem;
   border-top: 1px solid rgba(0, 0, 0, 0.1);
+  padding: 1rem 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  z-index: 1000;
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.1);
+}
+
+.player-info {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex: 1;
+}
+
+.player-thumbnail {
+  width: 60px;
+  height: 60px;
+  border-radius: 10px;
+  object-fit: cover;
+}
+
+.player-details {
+  flex: 1;
+}
+
+.player-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #333;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.player-channel {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #666;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.player-controls {
   display: flex;
   align-items: center;
   gap: 1rem;
 }
 
-.player-info h3 {
-  margin: 0;
-  color: #333;
-}
-
-.play-btn {
-  background: #667eea;
+.control-btn {
+  background: #ffd700;
+  color: white;
   border: none;
   border-radius: 50%;
   width: 50px;
@@ -89,34 +133,59 @@ const formatTime = (time) => {
   font-size: 1.2rem;
   cursor: pointer;
   transition: all 0.3s ease;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
 }
 
-.play-btn:hover {
-  background: #e4b046;
+.control-btn:hover {
   transform: scale(1.1);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
 }
 
-.progress-bar {
-  flex: 1;
+.time-info {
+  display: flex;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  color: #666;
+}
+
+.volume-control {
   display: flex;
   align-items: center;
   gap: 0.5rem;
 }
 
-.progress {
-  flex: 1;
-  height: 6px;
-  border-radius: 3px;
-  background: #ed8c32;
+.volume-slider {
+  width: 100px;
+  height: 5px;
+  border-radius: 5px;
+  background: #ddd;
   outline: none;
+  cursor: pointer;
 }
 
-.progress::-webkit-slider-thumb {
+.volume-slider::-webkit-slider-thumb {
   appearance: none;
-  width: 16px;
-  height: 16px;
+  width: 15px;
+  height: 15px;
   border-radius: 50%;
-  background: #e2eb64;
+  background: #ffd700;
   cursor: pointer;
+}
+
+@media (max-width: 768px) {
+  .music-player {
+    flex-direction: column;
+    gap: 1rem;
+    padding: 1rem;
+  }
+  
+  .player-info {
+    width: 100%;
+  }
+  
+  .player-controls {
+    width: 100%;
+    justify-content: center;
+  }
 }
 </style>

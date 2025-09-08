@@ -1,48 +1,141 @@
 <script setup>
-import { onMounted } from 'vue'
+import { onMounted, ref, computed } from 'vue'
 import MusicPlayer from './components/MusicPlayer.vue'
 import YouTubeSearch from './components/YouTubeSearch.vue'
 import PlaylistManager from './components/PlaylistManager.vue' 
 import FavoritesManager from './components/FavoritesManager.vue' 
 
+// Keycloak durumu
+const isAuthenticated = ref(false)
+const keycloak = ref(null)
+const isDarkMode = ref(false)
+
 onMounted(() => {
   console.log('🎵 Müzik Çalar Uygulaması başlatıldı!')
+  
+  // Keycloak durumunu kontrol et
+  if (window.$keycloak) {
+    keycloak.value = window.$keycloak
+    isAuthenticated.value = window.$keycloak.authenticated
+    
+    // Keycloak durumu değişikliklerini dinle
+    keycloak.value.onAuthSuccess = () => {
+      console.log('✅ Login başarılı!')
+      isAuthenticated.value = true
+      window.location.reload() // Sayfayı yenile
+    }
+    
+    keycloak.value.onAuthError = () => {
+      console.log('❌ Login hatası!')
+      isAuthenticated.value = false
+    }
+    
+    keycloak.value.onAuthLogout = () => {
+      console.log('👋 Logout başarılı!')
+      isAuthenticated.value = false
+      window.location.reload() // Sayfayı yenile
+    }
+  }
 })
 
+// Login fonksiyonu
+const login = () => {
+  if (keycloak.value) {
+    console.log('�� Login başlatılıyor...')
+    keycloak.value.login({
+      redirectUri: window.location.origin
+    })
+  } else {
+    console.error('❌ Keycloak bulunamadı!')
+    alert('Giriş yapılamıyor. Lütfen sayfayı yenileyin.')
+  }
+}
+
+// Logout fonksiyonu
+const logout = () => {
+  if (keycloak.value) {
+    console.log('👋 Logout başlatılıyor...')
+    keycloak.value.logout({
+      redirectUri: window.location.origin
+    })
+  } else {
+    console.error('❌ Keycloak bulunamadı!')
+    alert('Çıkış yapılamıyor. Lütfen sayfayı yenileyin.')
+  }
+}
+
+// Kullanıcı adı
+const username = computed(() => {
+  if (keycloak.value && keycloak.value.authenticated) {
+    return keycloak.value.tokenParsed?.preferred_username || 
+           keycloak.value.tokenParsed?.name || 
+           'Kullanıcı'
+  }
+  return null
+})
+
+// Tema değiştirici
+const toggleTheme = () => {
+  isDarkMode.value = !isDarkMode.value
+  localStorage.setItem('theme', isDarkMode.value ? 'dark' : 'light')
+}
 </script>
 
 <template>
-  <div id="app">
+  <div id="app" :class="{ 'dark-theme': isDarkMode }">
     <div class="sun-animation"></div>
     <div class="clouds"></div>
+    
     <header class="app-header">
       <h1 class="app-title">ZeynApp Music</h1>
-      <div class="theme-controls">
+      
+      <div class="header-controls">
+        <!-- Kullanıcı durumu -->
+        <div v-if="isAuthenticated" class="user-info">
+          <span class="welcome-text">Hoş geldin, {{ username }}! ��</span>
+          <button @click="logout" class="logout-btn">Çıkış Yap</button>
+        </div>
+        
+        <div v-else class="guest-info">
+          <span class="guest-text">Misafir Modu ��</span>
+          <button @click="login" class="login-btn">Giriş Yap</button>
+        </div>
+        
+        <!-- Tema değiştirici -->
         <button @click="toggleTheme" class="theme-btn">
-          {{ isDarkMode ? '��' : '☀️' }}
+          {{ isDarkMode ? '🌑' : '☀️' }}
         </button>
       </div>
     </header>
 
     <main class="app-main">
       <div class="container">
-        <!-- YouTube Arama Bölümü -->
+        <!-- YouTube Arama Bölümü - Herkese açık -->
         <section class="youtube-section">
           <YouTubeSearch />
         </section>
-         <!-- Playlist Yönetimi -->
-         <section class="playlist-section">
-          <PlaylistManager />
-        </section>
-        <!-- Favori Müzikler -->
-        <section class="favorites-section">
-          <FavoritesManager />
-        </section>
-
-        <!-- Müzik Listesi -->
-        <section class="music-list-section">
-          <MusicList />
-        </section>
+        
+        <!-- Login olunca görünecek özellikler -->
+        <div v-if="isAuthenticated" class="authenticated-features">
+          <!-- Playlist Yönetimi -->
+          <section class="playlist-section">
+            <PlaylistManager />
+          </section>
+          
+          <!-- Favori Müzikler -->
+          <section class="favorites-section">
+            <FavoritesManager />
+          </section>
+        </div>
+        
+        <!-- Misafir modu uyarısı -->
+        <div v-else class="guest-notice">
+          <div class="notice-card">
+            <h3>🔒 Giriş Yapın</h3>
+            <p>Playlist oluşturmak ve favori müziklerinizi kaydetmek için giriş yapın!</p>
+            <button @click="login" class="login-btn-large">Giriş Yap</button>
+          </div>
+        </div>
       </div>
     </main>
 
@@ -52,28 +145,6 @@ onMounted(() => {
 </template>
 
 <style>
-
-.youtube-section {
-  background: rgba(255, 255, 255, 0.95);
-  border-radius: 15px;
-  padding: 2rem;
-  margin-bottom: 2rem;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-}
-.playlist-section {
-  background: rgba(255, 255, 255, 0.95);
-  border-radius: 15px;
-  padding: 2rem;
-  margin-bottom: 2rem;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-}
-.favorites-section {
-  background: rgba(255, 255, 255, 0.95);
-  border-radius: 15px;
-  padding: 2rem;
-  margin-bottom: 2rem;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-}
 /* CSS Variables - Dinamik Renkler */
 :root {
   /* Güneş Doğuyor - Sarı Tonları */
@@ -173,87 +244,6 @@ onMounted(() => {
   overflow-x: hidden;
 }
 
-/* Güneş Animasyonu - Doğuş */
-.sunrise .sun-animation {
-  position: fixed;
-  top: 20px;
-  right: 20px;
-  width: 80px;
-  height: 80px;
-  background: radial-gradient(circle, var(--sun) 0%, var(--accent) 100%);
-  border-radius: 50%;
-  box-shadow: 0 0 50px var(--sun-glow);
-  animation: sunRise 3s ease-in-out infinite alternate;
-  z-index: 1;
-}
-
-/* Güneş Animasyonu - Batış */
-.sunset .sun-animation {
-  position: fixed;
-  top: 20px;
-  right: 20px;
-  width: 80px;
-  height: 80px;
-  background: radial-gradient(circle, var(--sun) 0%, var(--accent) 100%);
-  border-radius: 50%;
-  box-shadow: 0 0 50px var(--sun-glow);
-  animation: sunSet 3s ease-in-out infinite alternate;
-  z-index: 1;
-}
-
-/* Güneş Doğuş Animasyonu */
-@keyframes sunRise {
-  0% {
-    transform: translateY(0) scale(1) rotate(0deg);
-    box-shadow: 0 0 30px var(--sun-glow);
-  }
-  100% {
-    transform: translateY(-10px) scale(1.1) rotate(360deg);
-    box-shadow: 0 0 60px var(--sun-glow);
-  }
-}
-
-/* Güneş Batış Animasyonu */
-@keyframes sunSet {
-  0% {
-    transform: translateY(0) scale(1) rotate(0deg);
-    box-shadow: 0 0 30px var(--sun-glow);
-  }
-  100% {
-    transform: translateY(10px) scale(1.2) rotate(-360deg);
-    box-shadow: 0 0 80px var(--sun-glow);
-  }
-}
-
-/* Bulutlar - Doğuş */
-.sunrise .clouds {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="20" cy="20" r="15" fill="rgba(255,255,255,0.4)"/><circle cx="35" cy="15" r="20" fill="rgba(255,255,255,0.3)"/><circle cx="50" cy="20" r="18" fill="rgba(255,255,255,0.35)"/><circle cx="70" cy="15" r="16" fill="rgba(255,255,255,0.3)"/><circle cx="85" cy="20" r="14" fill="rgba(255,255,255,0.4)"/></svg>') repeat-x;
-  animation: cloudMove 20s linear infinite;
-  z-index: 0;
-}
-
-/* Bulutlar - Batış */
-.sunset .clouds {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="20" cy="20" r="15" fill="rgba(255,255,255,0.2)"/><circle cx="35" cy="15" r="20" fill="rgba(255,255,255,0.15)"/><circle cx="50" cy="20" r="18" fill="rgba(255,255,255,0.18)"/><circle cx="70" cy="15" r="16" fill="rgba(255,255,255,0.15)"/><circle cx="85" cy="20" r="14" fill="rgba(255,255,255,0.2)"/></svg>') repeat-x;
-  animation: cloudMove 25s linear infinite;
-  z-index: 0;
-}
-
-@keyframes cloudMove {
-  0% { transform: translateX(-100%); }
-  100% { transform: translateX(100%); }
-}
-
 /* Header */
 .app-header {
   display: flex;
@@ -280,9 +270,39 @@ onMounted(() => {
   text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1);
 }
 
-.theme-controls {
+.header-controls {
   display: flex;
+  align-items: center;
   gap: 1rem;
+}
+
+.user-info, .guest-info {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.welcome-text, .guest-text {
+  font-size: 1rem;
+  color: var(--text);
+  font-weight: 500;
+}
+
+.login-btn, .logout-btn {
+  background: var(--primary);
+  color: white;
+  border: none;
+  border-radius: 25px;
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+}
+
+.login-btn:hover, .logout-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
 }
 
 .theme-btn {
@@ -310,6 +330,11 @@ onMounted(() => {
   z-index: 5;
 }
 
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
 .section {
   background: var(--card);
   border-radius: 20px;
@@ -326,24 +351,52 @@ onMounted(() => {
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
 }
 
-/* Footer */
-.app-footer {
-  text-align: center;
-  padding: 2rem;
-  background: var(--card);
-  backdrop-filter: blur(10px);
-  border-radius: 20px 20px 0 0;
-  box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.1);
-  margin-top: 2rem;
-  position: relative;
-  z-index: 10;
+.authenticated-features {
+  display: block;
 }
 
-.app-footer p {
-  margin: 0;
-  font-size: 1.1rem;
+.guest-notice {
+  margin: 2rem 0;
+}
+
+.notice-card {
+  background: var(--card);
+  border-radius: 20px;
+  padding: 2rem;
+  text-align: center;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.notice-card h3 {
+  color: var(--primary);
+  margin-bottom: 1rem;
+  font-size: 1.5rem;
+}
+
+.notice-card p {
   color: var(--text);
+  margin-bottom: 1.5rem;
   opacity: 0.8;
+}
+
+.login-btn-large {
+  background: linear-gradient(45deg, var(--primary), var(--secondary));
+  color: white;
+  border: none;
+  border-radius: 30px;
+  padding: 1rem 2rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+}
+
+.login-btn-large:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
 }
 
 /* Responsive Design */
@@ -364,13 +417,6 @@ onMounted(() => {
   
   .section {
     padding: 1.5rem;
-  }
-  
-  .sun-animation {
-    width: 60px;
-    height: 60px;
-    top: 10px;
-    right: 10px;
   }
 }
 
