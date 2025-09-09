@@ -30,123 +30,123 @@ export default {
     window.removeEventListener('playlists-updated', this.loadPlaylists)
   },
   methods: {
-  async searchYouTube() {
-    if (!this.searchQuery.trim()) return
-    this.loading = true
-    this.hasSearched = true
-    try {
-      console.log(' Arama başlatılıyor:', this.searchQuery)
-      console.log(' API URL:', `http://localhost:5000/api/youtube/search?q=${this.searchQuery}&maxResults=10`)
+    async searchYouTube() {
+      if (!this.searchQuery.trim()) return
+      this.loading = true
+      this.hasSearched = true
+      try {
+        console.log(' Arama başlatılıyor:', this.searchQuery)
+        console.log(' API URL:', `http://localhost:5000/api/youtube/search?q=${this.searchQuery}&maxResults=10`)
       
-      const response = await youtubeAPI.search(this.searchQuery)
-      console.log('🔍 Frontend Response:', response)
-      console.log(' Response Status:', response.status)
-      console.log(' Response Data:', response.data)
-      console.log(' Response Type:', typeof response)
-      console.log(' Is Array:', Array.isArray(response))
+        const response = await youtubeAPI.search(this.searchQuery)
+        console.log('🔍 Frontend Response:', response)
+        console.log(' Response Status:', response.status)
+        console.log(' Response Data:', response.data)
+        console.log(' Response Type:', typeof response)
+        console.log(' Is Array:', Array.isArray(response))
       
       // Response direkt array olarak geliyor
-      if (Array.isArray(response)) {
-        this.videos = response
-        console.log('✅ Videolar yüklendi (Array):', this.videos.length)
-      } else if (response.data && Array.isArray(response.data)) {
-        this.videos = response.data
-        console.log('✅ Videolar yüklendi (response.data):', this.videos.length)
-      } else {
-        console.error('❌ Beklenmeyen response formatı:', response)
+        if (Array.isArray(response)) {
+          this.videos = response
+          console.log('✅ Videolar yüklendi (Array):', this.videos.length)
+        } else if (response.data && Array.isArray(response.data)) {
+          this.videos = response.data
+          console.log('✅ Videolar yüklendi (response.data):', this.videos.length)
+        } else {
+          console.error('❌ Beklenmeyen response formatı:', response)
+          this.videos = []
+          this.showMessage('❌ Arama sonuçları alınamadı')
+        }
+      } catch (error) {
+        console.error('❌ YouTube arama hatası:', error)
+        console.error('❌ Error response:', error.response)
+        console.error('❌ Error message:', error.message)
         this.videos = []
-        this.showMessage('❌ Arama sonuçları alınamadı')
+        this.showMessage('❌ Arama hatası: ' + error.message)
+      } finally {
+        this.loading = false
       }
-    } catch (error) {
-      console.error('❌ YouTube arama hatası:', error)
-      console.error('❌ Error response:', error.response)
-      console.error('❌ Error message:', error.message)
-      this.videos = []
-      this.showMessage('❌ Arama hatası: ' + error.message)
-    } finally {
-      this.loading = false
-    }
-  },
+    },
   
-  searchExample(example) {
-    this.searchQuery = example
-    this.searchYouTube()
-  },
+    searchExample(example) {
+      this.searchQuery = example
+      this.searchYouTube()
+    },
   
-  playMusic(video) {
-    console.log('🎵 Video objesi:', video)
-    console.log('🎵 Video ID:', video.id?.videoId)
+    playMusic(video) {
+      console.log('🎵 Video objesi:', video)
+      console.log('🎵 Video ID:', video.id?.videoId)
     
-    if (!video.id?.videoId) {
-      console.error('❌ Video ID bulunamadı!')
-      this.showMessage('❌ Video ID bulunamadı!')
-      return
-    }
-    
-    const videoId = video.id.videoId
-    const youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`
-    
-    console.log('🔗 YouTube URL:', youtubeUrl)
-    
-    window.open(youtubeUrl, '_blank')
-    
-    this.currentVideo = video
-    window.dispatchEvent(new CustomEvent('play-music', {
-      detail: {
-        video: video,
-        title: video.snippet.title,
-        channel: video.snippet.channelTitle,
-        thumbnail: video.snippet.thumbnails.medium.url,
-        videoId: video.id.videoId,
-        youtubeUrl: youtubeUrl
+      if (!video.id?.videoId) {
+        console.error('❌ Video ID bulunamadı!')
+        this.showMessage('❌ Video ID bulunamadı!')
+        return
       }
-    }))
     
-    this.showMessage('🎵 YouTube\'da açılıyor: ' + video.snippet.title)
-  },
-  
-  openYouTube(videoId) {
-    this.playMusic({ id: { videoId: videoId } })
-  },
-  
-  addToFavorites(video) {
-    if (!this.isAuthenticated) {
-      alert('Favorilere eklemek için giriş yapın!')
-      return
-    }
+      const videoId = video.id.videoId
+      const youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`
     
-    console.log('Favorilere eklendi:', video.snippet.title)
-    this.showMessage('❤️ Favorilere eklendi: ' + video.snippet.title)
-  },
-  
-  togglePlaylistMenu(video) {
-    if (!this.isAuthenticated) {
-      alert('Playlist oluşturmak için giriş yapın!')
-      return
-    }
+      console.log('🔗 YouTube URL:', youtubeUrl)
     
-    this.selectedVideo = video
-    this.showPlaylistMenu = !this.showPlaylistMenu
-  },
-  
-  closePlaylistMenu() {
-    this.showPlaylistMenu = false
-    this.selectedVideo = null
-  },
-  
-  addToPlaylist(playlistId, video) {
-    console.log('Playlist\'e eklendi:', video.snippet.title)
-    this.showMessage('📝 Playlist\'e eklendi: ' + video.snippet.title)
-    this.closePlaylistMenu()
-  },
-  
-  loadPlaylists() {
-    if (!this.isAuthenticated) return
+      window.open(youtubeUrl, '_blank')
     
-    const saved = localStorage.getItem('playlists')
-    this.playlists = saved ? JSON.parse(saved) : []
-  },
-  showLoginPrompt(message) {
+      this.currentVideo = video
+      window.dispatchEvent(new CustomEvent('play-music', {
+        detail: {
+          video: video,
+          title: video.snippet.title,
+          channel: video.snippet.channelTitle,
+          thumbnail: video.snippet.thumbnails.medium.url,
+          videoId: video.id.videoId,
+          youtubeUrl: youtubeUrl
+        }
+      }))
+    
+      this.showMessage('🎵 YouTube\'da açılıyor: ' + video.snippet.title)
+    },
+  
+    openYouTube(videoId) {
+      this.playMusic({ id: { videoId: videoId } })
+    },
+  
+    addToFavorites(video) {
+      if (!this.isAuthenticated) {
+        alert('Favorilere eklemek için giriş yapın!')
+        return
+      }
+    
+      console.log('Favorilere eklendi:', video.snippet.title)
+      this.showMessage('❤️ Favorilere eklendi: ' + video.snippet.title)
+    },
+  
+    togglePlaylistMenu(video) {
+      if (!this.isAuthenticated) {
+        alert('Playlist oluşturmak için giriş yapın!')
+        return
+      }
+    
+      this.selectedVideo = video
+      this.showPlaylistMenu = !this.showPlaylistMenu
+    },
+  
+    closePlaylistMenu() {
+      this.showPlaylistMenu = false
+      this.selectedVideo = null
+    },
+  
+    addToPlaylist(playlistId, video) {
+      console.log('Playlist\'e eklendi:', video.snippet.title)
+      this.showMessage('📝 Playlist\'e eklendi: ' + video.snippet.title)
+      this.closePlaylistMenu()
+    },
+  
+    loadPlaylists() {
+      if (!this.isAuthenticated) return
+    
+      const saved = localStorage.getItem('playlists')
+      this.playlists = saved ? JSON.parse(saved) : []
+    },
+    showLoginPrompt(message) {
       const confirmed = confirm(message + '\n\nGiriş yapmak ister misiniz?')
       if (confirmed) {
         this.login()
@@ -164,30 +164,32 @@ export default {
         alert('Giriş yapılamıyor. Lütfen sayfayı yenileyin.')
       }
     },
-  showMessage(message) {
-    const messageDiv = document.createElement('div')
-    messageDiv.textContent = message
-    messageDiv.style.cssText = `
-      position: fixed;
-      top: 20px;
-      right: 20px;
-      background: #4CAF50;
-      color: white;
-      padding: 1rem 2rem;
-      border-radius: 10px;
-      z-index: 1000;
-      box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-      animation: slideIn 0.3s ease;
+  
+    showMessage(message) {
+      const messageDiv = document.createElement('div')
+      messageDiv.textContent = message
+      messageDiv.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: #4CAF50;
+        color: white;
+        padding: 1rem 2rem;
+        border-radius: 10px;
+        z-index: 1000;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        animation: slideIn 0.3s ease;
     `
     
-    document.body.appendChild(messageDiv)
+      document.body.appendChild(messageDiv)
     
-    setTimeout(() => {
-      messageDiv.remove()
-    }, 3000)
+      setTimeout(() => {
+        messageDiv.remove()
+      }, 3000)
+    }
   }
 }
-}
+
 </script>
 <template>
   <div class="youtube-search">

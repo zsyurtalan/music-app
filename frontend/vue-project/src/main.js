@@ -1,6 +1,7 @@
 import { createApp } from 'vue'
 import App from './App.vue'
 import Keycloak from "keycloak-js";
+/*
 //Keycloak konfigurasyonu
 let keycloak = new Keycloak({
     url: "http://localhost:8080/",
@@ -17,6 +18,7 @@ let keycloak = new Keycloak({
     } else {
       console.log("ℹ️ Kullanıcı giriş yapmadı - Misafir modu");
     }
+      
     // Vue uygulamasını başlat
      const app = createApp(App);
     // Keycloak'ı global olarak kullanılabilir yap
@@ -29,3 +31,6 @@ let keycloak = new Keycloak({
    const app = createApp(App);
    app.mount('#app');
  });
+ */
+ const app = createApp(App);
+ app.mount('#app');
