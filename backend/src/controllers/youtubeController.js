@@ -1,7 +1,7 @@
 const { google } = require('googleapis');
 
 // YouTube API Key kontrolü
-console.log('�� YouTube API Key:', process.env.YOUTUBE_API_KEY ? 'Mevcut' : 'Eksik');
+console.log(' YouTube API Key:', process.env.YOUTUBE_API_KEY ? 'Mevcut' : 'Eksik');
 
 const youtube = google.youtube({
   version: 'v3',

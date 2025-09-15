@@ -72,6 +72,15 @@ export default {
       this.searchQuery = example
       this.searchYouTube()
     },
+    
+    onSearchInput() {
+      // Arama kutusu temizlendiğinde default ekrana dön
+      if (!this.searchQuery.trim()) {
+        this.hasSearched = false
+        this.videos = []
+        this.loading = false
+      }
+    },
   
     playMusic(video) {
       console.log('🎵 Video objesi:', video)
@@ -114,14 +123,62 @@ export default {
         alert('Favorilere eklemek için giriş yapın!')
         return
       }
-    
-      console.log('Favorilere eklendi:', video.snippet.title)
-      this.showMessage('❤️ Favorilere eklendi: ' + video.snippet.title)
+      
+      const videoId = video.id?.videoId || video.videoId
+      if (!videoId) {
+        this.showMessage('❌ Video ID bulunamadı!')
+        return
+      }
+      
+      // Favorileri yükle
+      const saved = localStorage.getItem('music-favorites')
+      const favorites = saved ? JSON.parse(saved) : []
+      
+      // Zaten var mı kontrol et
+      const existingFavorite = favorites.find(fav => {
+        const favId = fav.id?.videoId || fav.videoId || fav.id
+        return favId === videoId
+      })
+      
+      if (existingFavorite) {
+        this.showMessage('⚠️ Bu müzik zaten favorilerinizde!')
+        return
+      }
+      
+      // Favori objesini oluştur
+      const favoriteData = {
+        id: {
+          videoId: videoId
+        },
+        snippet: {
+          title: video.snippet?.title || video.title,
+          channelTitle: video.snippet?.channelTitle || video.channelTitle,
+          thumbnails: {
+            medium: {
+              url: video.snippet?.thumbnails?.medium?.url || video.thumbnail || `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`
+            }
+          }
+        },
+        videoId: videoId,
+        youtubeUrl: `https://www.youtube.com/watch?v=${videoId}`,
+        addedAt: new Date().toISOString()
+      }
+      
+      // Favorilere ekle
+      favorites.push(favoriteData)
+      
+      // localStorage'a kaydet
+      localStorage.setItem('music-favorites', JSON.stringify(favorites))
+      
+      // Event dispatch et
+      window.dispatchEvent(new CustomEvent('favorites-updated'))
+      
+      this.showMessage('❤️ Favorilere eklendi: ' + favoriteData.snippet.title)
     },
   
     togglePlaylistMenu(video) {
       if (!this.isAuthenticated) {
-        alert('Playlist oluşturmak için giriş yapın!')
+        this.showMessage('❌ Playlist oluşturmak için giriş yapın!', 'warning')
         return
       }
     
@@ -134,17 +191,141 @@ export default {
       this.selectedVideo = null
     },
   
-    addToPlaylist(playlistId, video) {
-      console.log('Playlist\'e eklendi:', video.snippet.title)
-      this.showMessage('📝 Playlist\'e eklendi: ' + video.snippet.title)
+    async addToPlaylist(playlistId, video) {
+      if (!this.isAuthenticated) {
+        this.showMessage('❌ Playlist\'e eklemek için giriş yapın!', 'warning')
+        return
+      }
+      
+      // Playlist'i bul
+      const playlist = this.playlists.find(p => p.id === playlistId)
+      if (!playlist) {
+        this.showMessage('❌ Playlist bulunamadı!')
+        return
+      }
+      
+      // Video ID'yi al
+      const videoId = video.id?.videoId || video.videoId
+      if (!videoId) {
+        this.showMessage('❌ Video ID bulunamadı!')
+        return
+      }
+      
+      // Müzik zaten var mı kontrol et
+      const existingVideo = playlist.videos?.find(v => {
+        const vId = v.id?.videoId || v.videoId || v.id
+        return vId === videoId
+      })
+      
+      if (existingVideo) {
+        this.showMessage('⚠️ Bu müzik zaten bu playlist\'te!')
+        this.closePlaylistMenu()
+        return
+      }
+      
+      // Backend'e playlist'e ekle
+      try {
+        console.log('🔄 Müzik playlist\'e ekleniyor:', video.snippet?.title || video.title)
+        
+        const response = await fetch(`/api/playlists/${playlistId}/add-music`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('keycloak-token')}`
+          },
+          body: JSON.stringify({
+            id: videoId,
+            title: video.snippet?.title || video.title,
+            channelTitle: video.snippet?.channelTitle || video.channelTitle,
+            thumbnail: video.snippet?.thumbnails?.medium?.url || video.thumbnail || `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
+            videoId: videoId,
+            youtubeUrl: `https://www.youtube.com/watch?v=${videoId}`
+          })
+        })
+        
+        if (response.ok) {
+          const updatedPlaylist = await response.json()
+          console.log('✅ Müzik playlist\'e eklendi')
+          
+          // Playlist'i güncelle
+          const playlistIndex = this.playlists.findIndex(p => p.id === playlistId)
+          if (playlistIndex !== -1) {
+            this.playlists[playlistIndex] = {
+              ...this.playlists[playlistIndex],
+              videos: updatedPlaylist.videos || []
+            }
+          }
+          
+          this.showMessage(`✅ "${video.snippet?.title || video.title}" "${playlist.name}" playlist'ine eklendi!`)
+          this.closePlaylistMenu()
+        } else {
+          const errorData = await response.json()
+          console.error('❌ Müzik ekleme hatası:', errorData)
+          this.showMessage(`❌ Müzik eklenemedi: ${errorData.error}`, 'error')
+        }
+      } catch (error) {
+        console.error('❌ Müzik ekleme hatası:', error)
+        this.showMessage('❌ Müzik eklenemedi!', 'error')
+      }
       this.closePlaylistMenu()
     },
   
-    loadPlaylists() {
-      if (!this.isAuthenticated) return
-    
-      const saved = localStorage.getItem('playlists')
-      this.playlists = saved ? JSON.parse(saved) : []
+    async loadPlaylists() {
+      // Sadece giriş yapmış kullanıcılar için playlist'leri yükle
+      if (!this.isAuthenticated) {
+        this.playlists = []
+        return
+      }
+      
+      try {
+        const userId = window.$keycloak?.subject || 'guest'
+        const token = localStorage.getItem('keycloak-token')
+        
+        console.log('🔍 YouTubeSearch - Keycloak subject:', window.$keycloak?.subject)
+        console.log('🔍 YouTubeSearch - User ID:', userId)
+        
+        if (userId === 'guest') {
+          console.log('👤 Misafir kullanıcı - playlist yüklenmiyor')
+          this.playlists = []
+          return
+        }
+        
+        console.log('🔄 Playlist\'ler yükleniyor, kullanıcı ID:', userId)
+        
+        const response = await fetch(`/api/playlists/user/${userId}`, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          }
+        })
+        
+        if (response.ok) {
+          const data = await response.json()
+          this.playlists = data.map(playlist => ({
+            id: playlist.id,
+            name: playlist.name,
+            description: playlist.description || '',
+            is_public: playlist.is_public || false,
+            videos: playlist.videos || [],
+            created: playlist.created_at || new Date().toISOString(),
+            created_at: playlist.created_at || new Date().toISOString()
+          }))
+          console.log('✅ Playlist\'ler yüklendi:', this.playlists.length, 'adet')
+        } else {
+          console.error('❌ Playlist yükleme hatası:', response.status)
+          // Fallback: localStorage'dan yükle
+          const saved = localStorage.getItem('music-playlists')
+          this.playlists = saved ? JSON.parse(saved) : []
+          console.log('📱 Fallback: localStorage\'dan yüklendi:', this.playlists.length, 'adet')
+        }
+      } catch (error) {
+        console.error('❌ Playlist yükleme hatası:', error)
+        // Fallback: localStorage'dan yükle
+        const saved = localStorage.getItem('music-playlists')
+        this.playlists = saved ? JSON.parse(saved) : []
+        console.log('📱 Fallback: localStorage\'dan yüklendi:', this.playlists.length, 'adet')
+      }
     },
     showLoginPrompt(message) {
       const confirmed = confirm(message + '\n\nGiriş yapmak ister misiniz?')
@@ -199,6 +380,7 @@ export default {
       <input 
         v-model="searchQuery" 
         @keyup.enter="searchYouTube"
+        @input="onSearchInput"
         placeholder="Müzik ara..."
         class="search-input"
       >

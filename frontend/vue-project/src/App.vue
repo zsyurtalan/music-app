@@ -22,6 +22,8 @@ onMounted(() => {
     keycloak.value.onAuthSuccess = () => {
       console.log('✅ Login başarılı!')
       isAuthenticated.value = true
+      // Kullanıcı verilerini temizle ve yeniden yükle
+      clearUserData()
       window.location.reload() // Sayfayı yenile
     }
     
@@ -33,6 +35,8 @@ onMounted(() => {
     keycloak.value.onAuthLogout = () => {
       console.log('👋 Logout başarılı!')
       isAuthenticated.value = false
+      // Kullanıcı verilerini temizle
+      clearUserData()
       window.location.reload() // Sayfayı yenile
     }
   }
@@ -41,7 +45,7 @@ onMounted(() => {
 // Login fonksiyonu
 const login = () => {
   if (keycloak.value) {
-    console.log('�� Login başlatılıyor...')
+    console.log(' Login başlatılıyor...')
     keycloak.value.login({
       redirectUri: window.location.origin
     })
@@ -74,6 +78,16 @@ const username = computed(() => {
   return null
 })
 
+// Kullanıcı verilerini temizle
+const clearUserData = () => {
+  console.log('🧹 Kullanıcı verileri temizleniyor...')
+  // localStorage'dan kullanıcıya özgü verileri temizle
+  localStorage.removeItem('music-playlists')
+  localStorage.removeItem('music-favorites')
+  localStorage.removeItem('keycloak-token')
+  console.log('✅ Kullanıcı verileri temizlendi')
+}
+
 // Tema değiştirici
 const toggleTheme = () => {
   isDarkMode.value = !isDarkMode.value
@@ -92,12 +106,12 @@ const toggleTheme = () => {
       <div class="header-controls">
         <!-- Kullanıcı durumu -->
         <div v-if="isAuthenticated" class="user-info">
-          <span class="welcome-text">Hoş geldin, {{ username }}! ��</span>
+          <span class="welcome-text">Hoş geldin, {{ username }}!</span>
           <button @click="logout" class="logout-btn">Çıkış Yap</button>
         </div>
         
         <div v-else class="guest-info">
-          <span class="guest-text">Misafir Modu ��</span>
+          <span class="guest-text">Misafir Modu</span>
           <button @click="login" class="login-btn">Giriş Yap</button>
         </div>
         
