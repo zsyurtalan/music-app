@@ -195,6 +195,7 @@ router.put('/:id/add-music', async (req, res) => {
       
       // Her durumda direct SQL de deneyelim
       console.log('🔄 Direct SQL update deniyor...');
+      console.log('🔍 SQL videos data:', JSON.stringify(videos));
       const sequelize = require('../config/database');
       const sqlResult = await sequelize.query(
         'UPDATE playlists SET videos = :videos WHERE id = :id',
@@ -207,6 +208,16 @@ router.put('/:id/add-music', async (req, res) => {
         }
       );
       console.log('✅ Direct SQL update result:', sqlResult);
+      
+      // Update sonrası database'i kontrol et
+      const checkResult = await sequelize.query(
+        'SELECT videos FROM playlists WHERE id = :id',
+        {
+          replacements: { id: playlist.id },
+          type: sequelize.QueryTypes.SELECT
+        }
+      );
+      console.log('🔍 Update sonrası database videos:', checkResult[0]?.videos);
       
       console.log('✅ Müzik playlist\'e eklendi:', newVideo);
     } catch (updateError) {
