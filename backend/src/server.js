@@ -11,7 +11,7 @@ async function startServer() {
   try {
     // Database bağlantısını test et
     await sequelize.authenticate();
-    console.log('✅ MySQL bağlantısı başarılı!');
+    console.log('✅ PostgreSQL bağlantısı başarılı!');
     
     // Tabloları oluştur/sync et
     await sequelize.sync({ force: false }); // force: true = tabloları siler ve yeniden oluşturur

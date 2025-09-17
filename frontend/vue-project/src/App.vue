@@ -22,6 +22,13 @@ onMounted(() => {
     keycloak.value.onAuthSuccess = () => {
       console.log('✅ Login başarılı!')
       isAuthenticated.value = true
+      
+      // Token'ı kaydet
+      if (window.$keycloak.token) {
+        localStorage.setItem('keycloak-token', window.$keycloak.token)
+        console.log('🔑 Token kaydedildi:', window.$keycloak.token.substring(0, 50) + '...')
+      }
+      
       // Kullanıcı verilerini temizle ve yeniden yükle
       clearUserData()
       window.location.reload() // Sayfayı yenile

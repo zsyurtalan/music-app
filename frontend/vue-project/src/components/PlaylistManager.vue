@@ -68,7 +68,7 @@ const loadPlaylists = async () => {
     
     console.log('🔄 Playlist\'ler yükleniyor, kullanıcı ID:', userId)
     
-    const response = await fetch(`/api/playlists/user/${userId}`, {
+    const response = await fetch(`http://localhost:5000/api/playlists/user/${userId}`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
@@ -78,16 +78,44 @@ const loadPlaylists = async () => {
     
     if (response.ok) {
       const data = await response.json()
-      playlists.value = data.map(playlist => ({
-        id: playlist.id,
-        name: playlist.name,
-        description: playlist.description || '',
-        is_public: playlist.is_public || false,
-        videos: playlist.videos || [],
-        created: playlist.created_at || new Date().toISOString(),
-        created_at: playlist.created_at || new Date().toISOString()
-      }))
+      console.log('🔍 Backend\'den gelen data:', data)
+      
+      playlists.value = data.map(playlist => {
+        console.log('🔍 Raw playlist data:', playlist)
+        console.log('🔍 Raw videos:', playlist.videos)
+        console.log('🔍 Videos type:', typeof playlist.videos)
+        console.log('🔍 Videos is array:', Array.isArray(playlist.videos))
+        
+        // Videos alanını güvenli şekilde işle
+        let videos = [];
+        if (playlist.videos) {
+          if (Array.isArray(playlist.videos)) {
+            videos = playlist.videos;
+          } else if (typeof playlist.videos === 'string') {
+            try {
+              videos = JSON.parse(playlist.videos);
+            } catch (e) {
+              console.error('❌ Videos JSON parse hatası:', e);
+              videos = [];
+            }
+          }
+        }
+        
+        console.log('🔍 Processed videos:', videos)
+        console.log('🔍 Processed videos length:', videos.length)
+        
+        return {
+          id: playlist.id,
+          name: playlist.name,
+          description: playlist.description || '',
+          is_public: playlist.is_public || false,
+          videos: videos,
+          created: playlist.created_at || new Date().toISOString(),
+          created_at: playlist.created_at || new Date().toISOString()
+        }
+      })
       console.log('✅ Playlist\'ler yüklendi:', playlists.value.length, 'adet')
+      console.log('🔍 Final playlists:', playlists.value)
     } else {
       console.error('❌ Playlist yükleme hatası:', response.status)
       // Fallback: localStorage'dan yükle
@@ -170,11 +198,21 @@ const searchMusic = async (playlistId) => {
 
 // Playlist'e müzik ekle
 const addMusicToPlaylist = async (playlistId, video) => {
+  console.log('🚀 ADD MUSIC TO PLAYLIST FONKSIYONU ÇAĞRILDI!')
+  console.log('🚀 ADD MUSIC TO PLAYLIST FONKSIYONU ÇAĞRILDI!')
+  console.log('🚀 ADD MUSIC TO PLAYLIST FONKSIYONU ÇAĞRILDI!')
   try {
+    console.log('🔍 Playlist ID:', playlistId)
+    console.log('🔍 Mevcut playlist\'ler:', playlists.value.map(p => ({ id: p.id, name: p.name })))
+    
     const playlist = playlists.value.find(p => p.id === playlistId)
     const videoId = video.id.videoId
     
+    console.log('🔍 Bulunan playlist:', playlist)
+    console.log('🔍 Video ID:', videoId)
+    
     if (!playlist) {
+      console.error('❌ Playlist bulunamadı! ID:', playlistId)
       showMessage('❌ Playlist bulunamadı!', 'error')
       return
     }
@@ -186,8 +224,15 @@ const addMusicToPlaylist = async (playlistId, video) => {
     }
     
     console.log('🔄 Müzik playlist\'e ekleniyor:', video.snippet.title)
+    console.log('🔍 API URL:', `http://localhost:5000/api/playlists/${playlistId}/add-music`)
+    console.log('🔍 Request data:', {
+      id: videoId,
+      title: video.snippet.title,
+      channelTitle: video.snippet.channelTitle,
+      videoId: videoId
+    })
     
-    const response = await fetch(`/api/playlists/${playlistId}/add-music`, {
+    const response = await fetch(`http://localhost:5000/api/playlists/${playlistId}/add-music`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -204,16 +249,32 @@ const addMusicToPlaylist = async (playlistId, video) => {
     })
     
     if (response.ok) {
-      const updatedPlaylist = await response.json()
-      console.log('✅ Müzik playlist\'e eklendi')
+      let updatedPlaylist;
+      try {
+        updatedPlaylist = await response.json()
+        console.log('✅ Müzik playlist\'e eklendi')
+      } catch (jsonError) {
+        console.error('❌ JSON parse hatası:', jsonError)
+        showMessage('❌ Müzik eklenemedi - Server hatası!', 'error')
+        return
+      }
       
       // Playlist'i güncelle
+      console.log('🔄 Playlist güncelleniyor...')
+      console.log('🔍 Updated playlist:', updatedPlaylist)
+      console.log('🔍 Updated videos:', updatedPlaylist.videos)
+      
       const playlistIndex = playlists.value.findIndex(p => p.id === playlistId)
+      console.log('🔍 Playlist index:', playlistIndex)
+      
       if (playlistIndex !== -1) {
         playlists.value[playlistIndex] = {
           ...playlists.value[playlistIndex],
           videos: updatedPlaylist.videos || []
         }
+        console.log('✅ Playlist güncellendi:', playlists.value[playlistIndex])
+      } else {
+        console.error('❌ Playlist index bulunamadı!')
       }
       
       showMessage(`✅ ${video.snippet.title} "${playlist.name}" playlist'ine eklendi!`)
@@ -237,6 +298,7 @@ const createPlaylist = async () => {
   
   try {
     const userId = window.$keycloak?.subject || 'guest'
+    const token = localStorage.getItem('keycloak-token')
     
     if (userId === 'guest') {
       showMessage('❌ Playlist oluşturmak için giriş yapın!', 'warning')
@@ -244,12 +306,14 @@ const createPlaylist = async () => {
     }
     
     console.log('🔄 Yeni playlist oluşturuluyor:', newPlaylistName.value)
+    console.log('🔍 User ID:', userId)
+    console.log('🔍 Token var mı:', !!token)
     
-    const response = await fetch('/api/playlists', {
+    const response = await fetch('http://localhost:5000/api/playlists', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('keycloak-token')}`
+        'Authorization': `Bearer ${token}`
       },
       body: JSON.stringify({
         user_id: userId,
@@ -258,6 +322,8 @@ const createPlaylist = async () => {
         is_public: false
       })
     })
+    
+    console.log('📡 Response status:', response.status)
     
     if (response.ok) {
       const data = await response.json()
@@ -278,8 +344,9 @@ const createPlaylist = async () => {
       newPlaylistName.value = ''
       showCreateForm.value = false
     } else {
-      console.error('❌ Playlist oluşturma hatası:', response.status)
-      showMessage('❌ Playlist oluşturulamadı!', 'error')
+      const errorData = await response.json()
+      console.error('❌ Playlist oluşturma hatası:', errorData)
+      showMessage(`❌ Playlist oluşturulamadı: ${errorData.error}`, 'error')
     }
   } catch (error) {
     console.error('❌ Playlist oluşturma hatası:', error)
@@ -300,7 +367,7 @@ const removeFromPlaylist = async (playlistId, videoId) => {
   try {
     console.log('🔄 Müzik playlist\'ten çıkarılıyor:', videoId)
     
-    const response = await fetch(`/api/playlists/${playlistId}/remove-music`, {
+    const response = await fetch(`http://localhost:5000/api/playlists/${playlistId}/remove-music`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -342,7 +409,7 @@ const deletePlaylist = async (playlistId) => {
     try {
       console.log('🔄 Playlist siliniyor:', playlistId)
       
-      const response = await fetch(`/api/playlists/${playlistId}`, {
+      const response = await fetch(`http://localhost:5000/api/playlists/${playlistId}`, {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',

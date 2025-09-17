@@ -29,20 +29,20 @@ const Playlist = sequelize.define('Playlist', {
     comment: 'Is playlist public'
   },
   videos: {
-    type: DataTypes.JSON,
+    type: DataTypes.JSONB,
     allowNull: false,
     defaultValue: [],
-    comment: 'Array of video objects'
+    comment: 'Array of video objects as JSON'
   },
   created_at: {
     type: DataTypes.DATE,
     allowNull: false,
     defaultValue: DataTypes.NOW,
-    comment: 'When playlist was created'
+    comment: 'Playlist creation date'
   }
 }, {
   tableName: 'playlists',
-  timestamps: false,
+  timestamps: false, // Manuel kontrol için false yaptık
   indexes: [
     {
       fields: ['user_id']

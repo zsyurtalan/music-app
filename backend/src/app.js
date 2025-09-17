@@ -10,7 +10,10 @@ const app = express();
 // CORS ayarları
 app.use(cors({
   origin: 'http://localhost:5173',
-  credentials: true
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  optionsSuccessStatus: 200
 }));
 
 // Session middleware
@@ -21,12 +24,12 @@ app.use(session({
   store: memoryStore
 }));
 
-// Keycloak middleware
-app.use(keycloak.middleware());
-
-// Middleware
+// Middleware - JSON parsing önce olmalı
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Keycloak middleware
+app.use(keycloak.middleware());
 
 // Kullanıcı ID'sini token'dan çıkaran middleware
 app.use((req, res, next) => {

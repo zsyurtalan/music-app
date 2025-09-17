@@ -71,11 +71,19 @@ router.get('/user/:userId', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   try {
     console.log('❌ Favori silme isteği:', req.params.id);
+    console.log('🔍 Token userId:', req.userId);
     
     const favorite = await Favorite.findByPk(req.params.id);
     
     if (!favorite) {
+      console.log('❌ Favori bulunamadı:', req.params.id);
       return res.status(404).json({ error: 'Favori bulunamadı' });
+    }
+    
+    // Kullanıcı yetkisi kontrolü
+    if (req.userId && req.userId !== favorite.user_id) {
+      console.log('❌ Yetkisiz erişim:', req.userId, '!=', favorite.user_id);
+      return res.status(403).json({ error: 'Bu favoriye erişim yetkiniz yok' });
     }
     
     await favorite.destroy();

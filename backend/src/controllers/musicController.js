@@ -27,14 +27,17 @@ const getUserMusicHistory = async (req, res) => {
     
     const allMusic = [];
     playlists.forEach(playlist => {
-      if (playlist.videos && Array.isArray(playlist.videos)) {
-        playlist.videos.forEach(video => {
-          allMusic.push({
-            ...video,
-            playlistName: playlist.name,
-            addedAt: video.addedAt
+      if (playlist.videos) {
+        const videos = JSON.parse(playlist.videos || '[]');
+        if (Array.isArray(videos)) {
+          videos.forEach(video => {
+            allMusic.push({
+              ...video,
+              playlistName: playlist.name,
+              addedAt: video.addedAt
+            });
           });
-        });
+        }
       }
     });
     
