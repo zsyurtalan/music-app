@@ -185,6 +185,13 @@ router.put('/:id/add-music', async (req, res) => {
   try {
     console.log('🎵 Playlist\'e müzik ekleme isteği:', req.body);
     console.log('🔍 Playlist ID:', req.params.id);
+    console.log('🔍 Content-Type:', req.headers['content-type']);
+    console.log('🔍 Raw body:', req.body);
+    
+    // req.body kontrolü
+    if (!req.body) {
+      return res.status(400).json({ error: 'Request body bulunamadı. Content-Type: application/json olmalı.' });
+    }
     
     const { id, title, channelTitle, thumbnail, videoId, youtubeUrl } = req.body;
     

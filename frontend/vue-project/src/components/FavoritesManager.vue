@@ -799,14 +799,16 @@ onUnmounted(() => {
 
 .favorites-stats {
   text-align: center;
-  margin-bottom: 1.5rem;
-  padding: 1.5rem;
+  margin: 0 auto 1.5rem;
+  padding: 1rem 2rem;
   background: linear-gradient(135deg, var(--primary), var(--secondary));
   color: white;
-  border-radius: 15px;
+  border-radius: 25px;
   box-shadow: 0 8px 25px rgba(255, 215, 0, 0.3);
   position: relative;
   overflow: hidden;
+  max-width: 400px;
+  width: fit-content;
 }
 
 .favorites-stats::before {
@@ -827,7 +829,7 @@ onUnmounted(() => {
 
 .favorites-stats p {
   margin: 0;
-  font-size: 1.2rem;
+  font-size: 1rem;
   font-weight: 600;
   position: relative;
   z-index: 1;
@@ -1365,11 +1367,12 @@ onUnmounted(() => {
   }
   
   .favorites-stats {
-    padding: 1rem;
+    padding: 0.75rem 1.5rem;
+    max-width: 350px;
   }
   
   .favorites-stats p {
-    font-size: 1rem;
+    font-size: 0.9rem;
   }
   
   .empty-state {

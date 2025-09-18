@@ -13,6 +13,12 @@ const isDarkMode = ref(false)
 onMounted(() => {
   console.log('🎵 Müzik Çalar Uygulaması başlatıldı!')
   
+  // Tab değiştirme event'ini dinle
+  window.addEventListener('switch-tab', (event) => {
+    console.log('🔄 Tab değiştiriliyor:', event.detail)
+    // Bu event'i component'lerde dinleyebiliriz
+  })
+  
   // Keycloak durumunu kontrol et
   if (window.$keycloak) {
     keycloak.value = window.$keycloak

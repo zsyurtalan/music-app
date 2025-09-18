@@ -278,14 +278,35 @@ export default {
         if (response.ok) {
           const updatedPlaylist = await response.json()
           console.log('✅ Müzik playlist\'e eklendi')
+          console.log('🔍 Updated playlist:', updatedPlaylist)
+          console.log('🔍 Updated musics:', updatedPlaylist.musics)
           
           // Playlist'i güncelle
           const playlistIndex = this.playlists.findIndex(p => p.id === playlistId)
           if (playlistIndex !== -1) {
+            // Musics array'ini videos formatına çevir
+            let videos = [];
+            if (updatedPlaylist.musics && Array.isArray(updatedPlaylist.musics)) {
+              videos = updatedPlaylist.musics.map(music => ({
+                id: { videoId: music.video_id },
+                snippet: {
+                  title: music.title,
+                  channelTitle: music.channel_title,
+                  thumbnails: {
+                    medium: { url: music.thumbnail_url }
+                  }
+                },
+                youtubeUrl: music.youtube_url,
+                addedAt: music.PlaylistMusic?.added_at || new Date().toISOString()
+              }));
+            }
+            
             this.playlists[playlistIndex] = {
               ...this.playlists[playlistIndex],
-              videos: updatedPlaylist.videos || []
+              videos: videos
             }
+            console.log('✅ Playlist güncellendi:', this.playlists[playlistIndex])
+            console.log('✅ Videos count:', videos.length)
           }
           
           this.showMessage(`✅ "${video.snippet?.title || video.title}" "${playlist.name}" playlist'ine eklendi!`)
@@ -300,6 +321,13 @@ export default {
         this.showMessage('❌ Müzik eklenemedi!', 'error')
       }
       this.closePlaylistMenu()
+    },
+    
+    // Playlist Manager'a git
+    goToPlaylistManager() {
+      this.closePlaylistMenu()
+      // Playlist Manager tab'ına geç
+      window.dispatchEvent(new CustomEvent('switch-tab', { detail: 'playlists' }))
     },
   
     // Arama geçmişini yükle
@@ -386,8 +414,6 @@ export default {
         const userId = window.$keycloak?.subject || 'guest'
         const token = localStorage.getItem('keycloak-token')
         
-        console.log('🔍 YouTubeSearch - Keycloak subject:', window.$keycloak?.subject)
-        console.log('🔍 YouTubeSearch - User ID:', userId)
         
         if (userId === 'guest') {
           console.log('👤 Misafir kullanıcı - playlist yüklenmiyor')
@@ -397,7 +423,7 @@ export default {
         
         console.log('🔄 Playlist\'ler yükleniyor, kullanıcı ID:', userId)
         
-        const response = await fetch(`/api/playlists/user/${userId}`, {
+        const response = await fetch(`http://localhost:5000/api/playlists/user/${userId}`, {
           method: 'GET',
           headers: {
             'Content-Type': 'application/json',
@@ -407,15 +433,51 @@ export default {
         
         if (response.ok) {
           const data = await response.json()
-          this.playlists = data.map(playlist => ({
-            id: playlist.id,
-            name: playlist.name,
-            description: playlist.description || '',
-            is_public: playlist.is_public || false,
-            videos: playlist.videos || [],
-            created: playlist.created_at || new Date().toISOString(),
-            created_at: playlist.created_at || new Date().toISOString()
-          }))
+        this.playlists = data.map(playlist => {
+            
+            // Musics alanını güvenli şekilde işle (yeni database yapısı)
+            let videos = [];
+            if (playlist.musics) {
+              if (Array.isArray(playlist.musics)) {
+                // Musics array'ini videos formatına çevir
+                videos = playlist.musics.map(music => ({
+                  id: { videoId: music.video_id },
+                  snippet: {
+                    title: music.title,
+                    channelTitle: music.channel_title,
+                    thumbnails: {
+                      medium: { url: music.thumbnail_url }
+                    }
+                  },
+                  youtubeUrl: music.youtube_url,
+                  addedAt: music.PlaylistMusic?.added_at || new Date().toISOString()
+                }));
+              }
+            } else if (playlist.videos) {
+              // Eski format için fallback
+              if (Array.isArray(playlist.videos)) {
+                videos = playlist.videos;
+              } else if (typeof playlist.videos === 'string') {
+                try {
+                  videos = JSON.parse(playlist.videos);
+                } catch (e) {
+                  console.error('❌ Videos JSON parse hatası:', e);
+                  videos = [];
+                }
+              }
+            }
+            
+            
+            return {
+              id: playlist.id,
+              name: playlist.name,
+              description: playlist.description || '',
+              is_public: playlist.is_public || false,
+              videos: videos,
+              created: playlist.created_at || new Date().toISOString(),
+              created_at: playlist.created_at || new Date().toISOString()
+            }
+          })
           console.log('✅ Playlist\'ler yüklendi:', this.playlists.length, 'adet')
         } else {
           console.error('❌ Playlist yükleme hatası:', response.status)
@@ -462,6 +524,9 @@ export default {
     onKeycloakLogin() {
       console.log('✅ Keycloak login eventi alındı')
       this.isAuthenticated = true
+      
+      // Playlist'leri yükle
+      this.loadPlaylists()
       
       // Bekleyen arama sonuçlarını göster
       if (this.pendingSearchQuery && this.pendingVideos.length > 0) {
@@ -596,8 +661,15 @@ export default {
       <div class="playlist-menu" @click.stop>
         <h3>Playlist Seçin</h3>
         <div v-if="playlists.length === 0" class="no-playlists">
-          <p>Henüz playlist oluşturmadınız</p>
-          <button @click="closePlaylistMenu" class="close-btn">Kapat</button>
+          <div class="no-playlists-content">
+            <div class="no-playlists-icon">📝</div>
+            <h4>Henüz playlist oluşturmadınız</h4>
+            <p>Müziği eklemek için önce bir playlist oluşturun</p>
+            <div class="no-playlists-actions">
+              <button @click="goToPlaylistManager" class="create-playlist-btn">Playlist Oluştur</button>
+              <button @click="closePlaylistMenu" class="close-btn">Kapat</button>
+            </div>
+          </div>
         </div>
         <div v-else>
           <div v-for="playlist in playlists" :key="playlist.id" class="playlist-item">
@@ -623,11 +695,14 @@ export default {
   position: relative;
   max-width: 100%;
   width: 100%;
+  align-items: center;
+  justify-content: center;
 }
 
 .search-input-wrapper {
   flex: 1;
   position: relative;
+  max-width: 600px;
 }
 
 .search-input {
@@ -1013,7 +1088,56 @@ export default {
 
 .no-playlists {
   text-align: center;
-  padding: 1rem;
+  padding: 2rem 0;
+}
+
+.no-playlists-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+
+.no-playlists-icon {
+  font-size: 3rem;
+  opacity: 0.6;
+}
+
+.no-playlists h4 {
+  margin: 0;
+  color: #333;
+  font-size: 1.2rem;
+}
+
+.no-playlists p {
+  margin: 0;
+  color: #666;
+  font-size: 0.9rem;
+  opacity: 0.8;
+}
+
+.no-playlists-actions {
+  display: flex;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.create-playlist-btn {
+  background: linear-gradient(45deg, #667eea, #764ba2);
+  color: white;
+  border: none;
+  border-radius: 25px;
+  padding: 0.75rem 1.5rem;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 600;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+}
+
+.create-playlist-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
 }
 .guest-warning {
   background: rgba(255, 193, 7, 0.1);
@@ -1069,10 +1193,12 @@ export default {
   .search-container {
     flex-direction: column;
     gap: 0.75rem;
+    align-items: stretch;
   }
   
   .search-input-wrapper {
     margin-bottom: 0;
+    max-width: 100%;
   }
   
   .search-btn {
