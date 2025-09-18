@@ -1,7 +1,7 @@
 const app = require('./app');
 const sequelize = require('./config/database');
-const Playlist = require('./models/Playlist');
-const Favorite = require('./models/Favorite');
+// İlişkileri yükle
+require('./models/associations');
 require('dotenv').config();
 
 const PORT = process.env.PORT || 5000;
@@ -23,7 +23,6 @@ async function startServer() {
       console.log(`📁 Müzik dosyaları: http://localhost:${PORT}/uploads`);
       console.log(`🎵 YouTube API: http://localhost:${PORT}/api/youtube`);
       console.log(`📝 Playlist API: http://localhost:${PORT}/api/playlists`);
-      console.log(`❤️ Favorites API: http://localhost:${PORT}/api/favorites`);
     });
     
   } catch (error) {

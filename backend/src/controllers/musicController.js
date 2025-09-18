@@ -1,5 +1,4 @@
 const Playlist = require('../models/Playlist');
-const Favorite = require('../models/Favorite');
 
 // Müzik listesi getir (genel)
 const getMusicList = async (req, res) => {

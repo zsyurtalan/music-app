@@ -28,17 +28,23 @@ const Playlist = sequelize.define('Playlist', {
     defaultValue: false,
     comment: 'Is playlist public'
   },
-  videos: {
-    type: DataTypes.JSONB,
+  is_fav: {
+    type: DataTypes.BOOLEAN,
     allowNull: false,
-    defaultValue: [],
-    comment: 'Array of video objects as JSON'
+    defaultValue: false,
+    comment: 'Is playlist favorite'
   },
   created_at: {
     type: DataTypes.DATE,
     allowNull: false,
     defaultValue: DataTypes.NOW,
     comment: 'Playlist creation date'
+  },
+  updated_at: {
+    type: DataTypes.DATE,
+    allowNull: false,
+    defaultValue: DataTypes.NOW,
+    comment: 'Playlist last update date'
   }
 }, {
   tableName: 'playlists',
@@ -52,5 +58,7 @@ const Playlist = sequelize.define('Playlist', {
     }
   ]
 });
+
+// İlişkileri tanımla - circular dependency'yi önlemek için lazy loading kullan
 
 module.exports = Playlist;

@@ -23,7 +23,12 @@
 }, {
     tableName: 'users',
     timestamps: true,
+    createdAt: 'created_at',
+    updatedAt: 'updated_at'
 });
+//ilişkileri tanımla
+const Playlist = require('./Playlist');
+
 module.exports = User;
 
 

@@ -1,7 +1,6 @@
 const sequelize = require('../config/database');
-const User = require('../models/Users');
-const Playlist = require('../models/Playlist');
-const Favorite = require('../models/Favorite');
+// İlişkileri yükle
+require('../models/associations');
 
 async function setupDatabase() {
   try {

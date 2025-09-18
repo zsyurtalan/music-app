@@ -82,13 +82,30 @@ const loadPlaylists = async () => {
       
       playlists.value = data.map(playlist => {
         console.log('🔍 Raw playlist data:', playlist)
-        console.log('🔍 Raw videos:', playlist.videos)
-        console.log('🔍 Videos type:', typeof playlist.videos)
-        console.log('🔍 Videos is array:', Array.isArray(playlist.videos))
+        console.log('🔍 Raw musics:', playlist.musics)
+        console.log('🔍 Musics type:', typeof playlist.musics)
+        console.log('🔍 Musics is array:', Array.isArray(playlist.musics))
         
-        // Videos alanını güvenli şekilde işle
+        // Musics alanını güvenli şekilde işle (yeni database yapısı)
         let videos = [];
-        if (playlist.videos) {
+        if (playlist.musics) {
+          if (Array.isArray(playlist.musics)) {
+            // Musics array'ini videos formatına çevir
+            videos = playlist.musics.map(music => ({
+              id: { videoId: music.video_id },
+              snippet: {
+                title: music.title,
+                channelTitle: music.channel_title,
+                thumbnails: {
+                  medium: { url: music.thumbnail_url }
+                }
+              },
+              youtubeUrl: music.youtube_url,
+              addedAt: music.PlaylistMusic?.added_at || new Date().toISOString()
+            }));
+          }
+        } else if (playlist.videos) {
+          // Eski format için fallback
           if (Array.isArray(playlist.videos)) {
             videos = playlist.videos;
           } else if (typeof playlist.videos === 'string') {
@@ -262,17 +279,35 @@ const addMusicToPlaylist = async (playlistId, video) => {
       // Playlist'i güncelle
       console.log('🔄 Playlist güncelleniyor...')
       console.log('🔍 Updated playlist:', updatedPlaylist)
-      console.log('🔍 Updated videos:', updatedPlaylist.videos)
+      console.log('🔍 Updated musics:', updatedPlaylist.musics)
       
       const playlistIndex = playlists.value.findIndex(p => p.id === playlistId)
       console.log('🔍 Playlist index:', playlistIndex)
       
       if (playlistIndex !== -1) {
+        // Musics array'ini videos formatına çevir
+        let videos = [];
+        if (updatedPlaylist.musics && Array.isArray(updatedPlaylist.musics)) {
+          videos = updatedPlaylist.musics.map(music => ({
+            id: { videoId: music.video_id },
+            snippet: {
+              title: music.title,
+              channelTitle: music.channel_title,
+              thumbnails: {
+                medium: { url: music.thumbnail_url }
+              }
+            },
+            youtubeUrl: music.youtube_url,
+            addedAt: music.PlaylistMusic?.added_at || new Date().toISOString()
+          }));
+        }
+        
         playlists.value[playlistIndex] = {
           ...playlists.value[playlistIndex],
-          videos: updatedPlaylist.videos || []
+          videos: videos
         }
         console.log('✅ Playlist güncellendi:', playlists.value[playlistIndex])
+        console.log('✅ Videos count:', videos.length)
       } else {
         console.error('❌ Playlist index bulunamadı!')
       }
@@ -385,9 +420,26 @@ const removeFromPlaylist = async (playlistId, videoId) => {
       // Playlist'i güncelle
       const playlistIndex = playlists.value.findIndex(p => p.id === playlistId)
       if (playlistIndex !== -1) {
+        // Musics array'ini videos formatına çevir
+        let videos = [];
+        if (updatedPlaylist.musics && Array.isArray(updatedPlaylist.musics)) {
+          videos = updatedPlaylist.musics.map(music => ({
+            id: { videoId: music.video_id },
+            snippet: {
+              title: music.title,
+              channelTitle: music.channel_title,
+              thumbnails: {
+                medium: { url: music.thumbnail_url }
+              }
+            },
+            youtubeUrl: music.youtube_url,
+            addedAt: music.PlaylistMusic?.added_at || new Date().toISOString()
+          }));
+        }
+        
         playlists.value[playlistIndex] = {
           ...playlists.value[playlistIndex],
-          videos: updatedPlaylist.videos || []
+          videos: videos
         }
       }
       

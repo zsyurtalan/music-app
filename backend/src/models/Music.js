@@ -1,16 +1,17 @@
 const { DataTypes } = require('sequelize');
 const sequelize = require('../config/database');
 
-const Favorite = sequelize.define('Favorite', {
+const Music = sequelize.define('Music', {
   id: {
     type: DataTypes.INTEGER,
     primaryKey: true,
     autoIncrement: true
   },
-  user_id: {
+  video_id: {
     type: DataTypes.STRING,
     allowNull: false,
-    comment: 'User ID from Keycloak'
+    unique: true,
+    comment: 'YouTube video ID'
   },
   title: {
     type: DataTypes.STRING,
@@ -27,37 +28,44 @@ const Favorite = sequelize.define('Favorite', {
     allowNull: true,
     comment: 'Video thumbnail URL'
   },
-  video_id: {
-    type: DataTypes.STRING,
-    allowNull: false,
-    comment: 'YouTube video ID'
-  },
-  youtubeUrl: {
+  youtube_url: {
     type: DataTypes.TEXT,
     allowNull: true,
     comment: 'Full YouTube URL'
+  },
+  duration: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    comment: 'Video duration'
   },
   created_at: {
     type: DataTypes.DATE,
     allowNull: false,
     defaultValue: DataTypes.NOW,
-    comment: 'When added to favorites'
+    comment: 'When added to database'
+  },
+  updated_at: {
+    type: DataTypes.DATE,
+    allowNull: false,
+    defaultValue: DataTypes.NOW,
+    comment: 'Last update date'
   }
 }, {
-  tableName: 'favorites',
+  tableName: 'musics',
   timestamps: false,
   indexes: [
-    {
-      fields: ['user_id']
-    },
     {
       fields: ['video_id']
     },
     {
-      unique: true,
-      fields: ['user_id', 'video_id']
+      fields: ['title']
+    },
+    {
+      fields: ['channel_title']
     }
   ]
 });
 
-module.exports = Favorite;
+// İlişkileri tanımla - circular dependency'yi önlemek için lazy loading kullan
+
+module.exports = Music;

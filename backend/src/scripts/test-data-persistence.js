@@ -1,6 +1,6 @@
 const sequelize = require('../config/database');
-const Playlist = require('../models/Playlist');
-const Favorite = require('../models/Favorite');
+// İlişkileri yükle
+const { Playlist, Music, PlaylistMusic } = require('../models/associations');
 
 async function testDataPersistence() {
   try {
@@ -25,16 +25,16 @@ async function testDataPersistence() {
       }
     });
     
-    // Tüm favorileri listele
-    const favorites = await Favorite.findAll();
-    console.log('\n❤️ Toplam favori sayısı:', favorites.length);
+    // Tüm müzikleri listele
+    const musics = await Music.findAll();
+    console.log('\n🎵 Toplam müzik sayısı:', musics.length);
     
-    favorites.forEach((favorite, index) => {
-      console.log(`\n⭐ Favori ${index + 1}:`);
-      console.log(`   ID: ${favorite.id}`);
-      console.log(`   User ID: ${favorite.user_id}`);
-      console.log(`   Title: ${favorite.title}`);
-      console.log(`   Video ID: ${favorite.video_id}`);
+    musics.forEach((music, index) => {
+      console.log(`\n🎶 Müzik ${index + 1}:`);
+      console.log(`   ID: ${music.id}`);
+      console.log(`   Video ID: ${music.video_id}`);
+      console.log(`   Title: ${music.title}`);
+      console.log(`   Channel: ${music.channel_title}`);
     });
     
     // Kullanıcı ID'lerini analiz et

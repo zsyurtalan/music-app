@@ -56,7 +56,6 @@ app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 app.use('/api/music', require('./routes/musicRoutes'));
 app.use('/api/youtube', require('./routes/youtubeRoutes'));
 app.use('/api/playlists', require('./routes/playlistRoutes'));
-app.use('/api/favorites', require('./routes/favoriteRoutes'));
 
 // Ana route
 app.get('/', (req, res) => {

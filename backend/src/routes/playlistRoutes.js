@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
-const Playlist = require('../models/Playlist');
-const Favorite = require('../models/Favorite');
+// İlişkileri yükle
+const { Playlist, Music, PlaylistMusic } = require('../models/associations');
 
 // Test endpoint
 router.get('/test', (req, res) => {
@@ -17,18 +17,18 @@ router.get('/test', (req, res) => {
 router.get('/', async (req, res) => {
   try {
     console.log('🔍 Tüm playlist\'ler isteniyor');
-    const playlists = await Playlist.findAll();
-    
-    // Videos'u array olarak döndür
-    const playlistsWithVideos = playlists.map(playlist => {
-      const playlistData = playlist.toJSON();
-      // PostgreSQL JSONB alanı zaten obje olarak gelir
-      playlistData.videos = playlistData.videos || [];
-      return playlistData;
+    const playlists = await Playlist.findAll({
+      include: [{
+        model: Music,
+        as: 'musics',
+        through: {
+          attributes: ['added_at', 'order_index']
+        }
+      }]
     });
     
-    console.log('✅ Playlist\'ler getirildi:', playlistsWithVideos.length, 'adet');
-    res.json(playlistsWithVideos);
+    console.log('✅ Playlist\'ler getirildi:', playlists.length, 'adet');
+    res.json(playlists);
   } catch (error) {
     console.error('❌ Playlist getirme hatası:', error);
     res.status(500).json({ error: error.message });
@@ -40,9 +40,8 @@ router.post('/', async (req, res) => {
   try {
     console.log('🔄 Yeni playlist oluşturuluyor:', req.body);
     console.log('🔍 Token userId:', req.userId);
-    console.log('🔍 Authorization header:', req.headers.authorization);
     
-    const { user_id, name, description, is_public } = req.body;
+    const { user_id, name, description, is_public, is_fav } = req.body;
     
     if (!user_id || !name) {
       console.log('❌ Eksik parametreler:', { user_id, name });
@@ -54,7 +53,7 @@ router.post('/', async (req, res) => {
       name,
       description: description || '',
       is_public: is_public || false,
-      videos: []
+      is_fav: is_fav || false
     });
     
     console.log('✅ Playlist oluşturuldu:', playlist.id);
@@ -70,7 +69,6 @@ router.get('/user/:userId', async (req, res) => {
   try {
     console.log('🔍 Playlist isteği - Token userId:', req.userId);
     console.log('🔍 Playlist isteği - Param userId:', req.params.userId);
-    console.log('🔍 Authorization header:', req.headers.authorization);
     
     // Token'dan gelen kullanıcı ID'si ile parametre ID'sini karşılaştır
     if (req.userId && req.userId !== req.params.userId) {
@@ -79,61 +77,71 @@ router.get('/user/:userId', async (req, res) => {
     }
     
     const playlists = await Playlist.findAll({
-      where: { user_id: req.params.userId }
+      where: { user_id: req.params.userId },
+      include: [{
+        model: Music,
+        as: 'musics',
+        through: {
+          attributes: ['added_at', 'order_index']
+        }
+      }]
     });
     
-    console.log('🔍 Database\'den gelen playlists:', playlists.length, 'adet');
-    
-    // Videos'u array olarak döndür
-    const playlistsWithVideos = playlists.map(playlist => {
-      const playlistData = playlist.toJSON();
-      console.log('🔍 Raw playlist data:', playlistData.name, 'videos:', playlistData.videos);
-      console.log('🔍 Videos type:', typeof playlistData.videos);
-      console.log('🔍 Videos is array:', Array.isArray(playlistData.videos));
-      
-      // PostgreSQL JSONB alanı zaten obje olarak gelir
-      playlistData.videos = playlistData.videos || [];
-      console.log('🔍 Processed videos:', playlistData.videos.length, 'items');
-      return playlistData;
-    });
-    
-    console.log('✅ Playlist\'ler getirildi:', playlistsWithVideos.length, 'adet');
-    res.json(playlistsWithVideos);
+    console.log('✅ Playlist\'ler getirildi:', playlists.length, 'adet');
+    res.json(playlists);
   } catch (error) {
     console.error('❌ Playlist getirme hatası:', error);
     res.status(500).json({ error: error.message });
   }
 });
 
+// Kullanıcının favori playlistlerini getir
+router.get('/user/:userId/favorites', async (req, res) => {
+  try {
+    console.log('🔍 Favori playlist isteği - Token userId:', req.userId);
+    console.log('🔍 Favori playlist isteği - Param userId:', req.params.userId);
+    
+    // Token'dan gelen kullanıcı ID'si ile parametre ID'sini karşılaştır
+    if (req.userId && req.userId !== req.params.userId) {
+      console.log('❌ Yetkisiz erişim denemesi:', req.userId, '!=', req.params.userId);
+      return res.status(403).json({ error: 'Bu kullanıcının favori playlistlerine erişim yetkiniz yok' });
+    }
+    
+    const playlists = await Playlist.findAll({
+      where: { 
+        user_id: req.params.userId,
+        is_fav: true
+      },
+      include: [{
+        model: Music,
+        as: 'musics',
+        through: {
+          attributes: ['added_at', 'order_index']
+        }
+      }]
+    });
+    
+    console.log('✅ Favori playlist\'ler getirildi:', playlists.length, 'adet');
+    res.json(playlists);
+  } catch (error) {
+    console.error('❌ Favori playlist getirme hatası:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Playlist'e müzik ekle
 router.put('/:id/add-music', async (req, res) => {
-  console.log('🎵 MÜZİK EKLEME ENDPOINT\'İ ÇAĞRILDI!');
-  console.log('🎵 MÜZİK EKLEME ENDPOINT\'İ ÇAĞRILDI!');
-  console.log('🎵 MÜZİK EKLEME ENDPOINT\'İ ÇAĞRILDI!');
-  
   try {
     console.log('🎵 Playlist\'e müzik ekleme isteği:', req.body);
     console.log('🔍 Playlist ID:', req.params.id);
-    console.log('🔍 Request body:', JSON.stringify(req.body, null, 2));
-    console.log('🔍 Headers:', req.headers);
-    console.log('🔍 Authorization:', req.headers.authorization);
-    console.log('🔍 Content-Type:', req.headers['content-type']);
-    console.log('🔍 Body type:', typeof req.body);
-    console.log('🔍 Body is null:', req.body === null);
-    console.log('🔍 Body is undefined:', req.body === undefined);
-    
-    // req.body kontrolü
-    if (!req.body) {
-      console.log('❌ req.body is null or undefined');
-      return res.status(400).json({ error: 'Request body is missing' });
-    }
     
     const { id, title, channelTitle, thumbnail, videoId, youtubeUrl } = req.body;
-    console.log('🔍 Parsed data:', { id, title, channelTitle, thumbnail, videoId, youtubeUrl });
+    
+    if (!videoId || !title) {
+      return res.status(400).json({ error: 'videoId ve title gerekli' });
+    }
     
     const playlist = await Playlist.findByPk(req.params.id);
-    
-    console.log('🔍 Playlist bulundu:', !!playlist);
     
     if (!playlist) {
       return res.status(404).json({ error: 'Playlist bulunamadı' });
@@ -145,103 +153,53 @@ router.put('/:id/add-music', async (req, res) => {
       return res.status(403).json({ error: 'Bu playlist\'e erişim yetkiniz yok' });
     }
     
-    // PostgreSQL JSONB alanı zaten obje olarak gelir
-    let videos = playlist.videos || [];
-    console.log('✅ Videos loaded:', videos.length, 'items');
-    console.log('🔍 Videos type:', typeof videos);
-    console.log('🔍 Videos is array:', Array.isArray(videos));
-    console.log('🔍 Videos content:', JSON.stringify(videos, null, 2));
+    // Müziği bul veya oluştur
+    let music = await Music.findOne({ where: { video_id: videoId } });
     
-    // videos'un array olduğundan emin ol
-    if (!Array.isArray(videos)) {
-      console.log('❌ Videos is not an array, converting...');
-      videos = [];
+    if (!music) {
+      music = await Music.create({
+        video_id: videoId,
+        title: title,
+        channel_title: channelTitle,
+        thumbnail_url: thumbnail,
+        youtube_url: youtubeUrl
+      });
+      console.log('✅ Yeni müzik oluşturuldu:', music.id);
+    } else {
+      console.log('✅ Mevcut müzik bulundu:', music.id);
     }
     
-    // Müzik zaten var mı kontrol et
-    const existingVideo = videos.find(video => video.videoId === videoId || video.id === id);
-    if (existingVideo) {
-      console.log('⚠️ Müzik zaten mevcut:', videoId);
+    // Playlist'e müzik ekle (junction table)
+    const [playlistMusic, created] = await PlaylistMusic.findOrCreate({
+      where: {
+        playlist_id: playlist.id,
+        music_id: music.id
+      },
+      defaults: {
+        added_at: new Date(),
+        order_index: 0
+      }
+    });
+    
+    if (!created) {
+      console.log('⚠️ Müzik zaten playlist\'te mevcut');
       return res.status(400).json({ error: 'Bu müzik zaten playlist\'te mevcut' });
     }
     
-    console.log('🔍 Mevcut videos sayısı:', videos.length);
-    console.log('🔍 Mevcut videos:', videos.map(v => v.title));
+    console.log('✅ Müzik playlist\'e eklendi');
     
-    const newVideo = {
-      id: id || videoId,
-      videoId: videoId || id,
-      title: title,
-      channelTitle: channelTitle,
-      thumbnail: thumbnail,
-      youtubeUrl: youtubeUrl,
-      addedAt: new Date().toISOString()
-    };
-    
-    videos.push(newVideo);
-    
-    console.log('🔄 Database\'e kaydediliyor...')
-    console.log('🔍 Videos to save:', JSON.stringify(videos))
-    
-    // PostgreSQL JSONB alanını güncelle - Direct SQL ile
-    try {
-      console.log('🔄 Sequelize update başlatılıyor...');
-      const updateResult = await playlist.update({ 
-        videos: videos 
-      }, {
-        fields: ['videos'] // Sadece videos alanını güncelle
-      });
-      console.log('✅ Sequelize update result:', updateResult);
-      
-      // Her durumda direct SQL de deneyelim
-      console.log('🔄 Direct SQL update deniyor...');
-      console.log('🔍 SQL videos data:', JSON.stringify(videos));
-      const sequelize = require('../config/database');
-      const sqlResult = await sequelize.query(
-        'UPDATE playlists SET videos = :videos WHERE id = :id',
-        {
-          replacements: { 
-            videos: JSON.stringify(videos), 
-            id: playlist.id 
-          },
-          type: sequelize.QueryTypes.UPDATE
+    // Güncellenmiş playlist'i getir (müziklerle birlikte)
+    const updatedPlaylist = await Playlist.findByPk(playlist.id, {
+      include: [{
+        model: Music,
+        as: 'musics',
+        through: {
+          attributes: ['added_at', 'order_index']
         }
-      );
-      console.log('✅ Direct SQL update result:', sqlResult);
-      
-      // Update sonrası database'i kontrol et
-      const checkResult = await sequelize.query(
-        'SELECT videos FROM playlists WHERE id = :id',
-        {
-          replacements: { id: playlist.id },
-          type: sequelize.QueryTypes.SELECT
-        }
-      );
-      console.log('🔍 Update sonrası database videos:', checkResult[0]?.videos);
-      
-      console.log('✅ Müzik playlist\'e eklendi:', newVideo);
-    } catch (updateError) {
-      console.error('❌ Update hatası:', updateError);
-      throw updateError;
-    }
+      }]
+    });
     
-    // Reload yerine güncellenmiş veriyi kullan
-    console.log('🔍 Update sonrası playlist videos:', playlist.videos);
-    console.log('🔍 Videos tipi:', typeof playlist.videos);
-    console.log('🔍 Videos uzunluğu:', Array.isArray(playlist.videos) ? playlist.videos.length : 'Array değil');
-    
-    // Güncellenmiş videos'u manuel olarak set et
-    playlist.videos = videos;
-    console.log('🔍 Manuel set edilen videos:', playlist.videos);
-    
-    // Response'u düzelt - videos'u array olarak döndür
-    const responsePlaylist = {
-      ...playlist.toJSON(),
-      videos: videos // Güncellenmiş videos array'ini kullan
-    };
-    
-    console.log('📤 Frontend\'e gönderilen response:', JSON.stringify(responsePlaylist, null, 2));
-    res.json(responsePlaylist);
+    res.json(updatedPlaylist);
   } catch (error) {
     console.error('❌ Müzik ekleme hatası:', error);
     res.status(500).json({ error: error.message });
@@ -254,6 +212,11 @@ router.put('/:id/remove-music', async (req, res) => {
     console.log('🔄 Müzik çıkarma isteği:', req.params.id, req.body);
     
     const { videoId } = req.body;
+    
+    if (!videoId) {
+      return res.status(400).json({ error: 'videoId gerekli' });
+    }
+    
     const playlist = await Playlist.findByPk(req.params.id);
     
     if (!playlist) {
@@ -267,30 +230,84 @@ router.put('/:id/remove-music', async (req, res) => {
       return res.status(403).json({ error: 'Bu playlist\'e erişim yetkiniz yok' });
     }
     
-    // PostgreSQL JSONB alanı zaten obje olarak gelir
-    let videos = playlist.videos || [];
-    console.log('🔍 Videos type:', typeof videos);
-    console.log('🔍 Videos is array:', Array.isArray(videos));
+    // Müziği bul
+    const music = await Music.findOne({ where: { video_id: videoId } });
     
-    // videos'un array olduğundan emin ol
-    if (!Array.isArray(videos)) {
-      console.log('❌ Videos is not an array, converting...');
-      videos = [];
+    if (!music) {
+      return res.status(404).json({ error: 'Müzik bulunamadı' });
     }
     
-    const updatedVideos = videos.filter(video => video.videoId !== videoId);
+    // Junction table'dan sil
+    const deleted = await PlaylistMusic.destroy({
+      where: {
+        playlist_id: playlist.id,
+        music_id: music.id
+      }
+    });
     
-    await playlist.update({ videos: updatedVideos });
+    if (deleted === 0) {
+      return res.status(404).json({ error: 'Müzik playlist\'te bulunamadı' });
+    }
+    
     console.log('✅ Müzik playlist\'ten çıkarıldı:', videoId);
     
-    // Response'u düzelt - videos'u array olarak döndür
-    const responsePlaylist = {
-      ...playlist.toJSON(),
-      videos: updatedVideos
-    };
-    res.json(responsePlaylist);
+    // Güncellenmiş playlist'i getir (müziklerle birlikte)
+    const updatedPlaylist = await Playlist.findByPk(playlist.id, {
+      include: [{
+        model: Music,
+        as: 'musics',
+        through: {
+          attributes: ['added_at', 'order_index']
+        }
+      }]
+    });
+    
+    res.json(updatedPlaylist);
   } catch (error) {
     console.error('❌ Müzik çıkarma hatası:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Playlist'i favori olarak işaretle/çıkar
+router.put('/:id/toggle-favorite', async (req, res) => {
+  try {
+    console.log('⭐ Favori toggle isteği:', req.params.id);
+    console.log('🔍 Token userId:', req.userId);
+    
+    const playlist = await Playlist.findByPk(req.params.id);
+    
+    if (!playlist) {
+      console.log('❌ Playlist bulunamadı:', req.params.id);
+      return res.status(404).json({ error: 'Playlist bulunamadı' });
+    }
+    
+    // Kullanıcı yetkisi kontrolü
+    if (req.userId && req.userId !== playlist.user_id) {
+      console.log('❌ Yetkisiz erişim:', req.userId, '!=', playlist.user_id);
+      return res.status(403).json({ error: 'Bu playlist\'e erişim yetkiniz yok' });
+    }
+    
+    // Favori durumunu tersine çevir
+    const newFavoriteStatus = !playlist.is_fav;
+    await playlist.update({ is_fav: newFavoriteStatus });
+    
+    console.log('✅ Playlist favori durumu güncellendi:', newFavoriteStatus);
+    
+    // Güncellenmiş playlist'i getir (müziklerle birlikte)
+    const updatedPlaylist = await Playlist.findByPk(playlist.id, {
+      include: [{
+        model: Music,
+        as: 'musics',
+        through: {
+          attributes: ['added_at', 'order_index']
+        }
+      }]
+    });
+    
+    res.json(updatedPlaylist);
+  } catch (error) {
+    console.error('❌ Favori toggle hatası:', error);
     res.status(500).json({ error: error.message });
   }
 });
