@@ -32,6 +32,9 @@ keycloak.init({ onLoad: "check-sso", checkLoginIframe: false }).then(authenticat
       localStorage.setItem('keycloak-token', keycloak.token);
       console.log('🔑 Token localStorage\'a kaydedildi:', keycloak.token.substring(0, 50) + '...');
     }
+    
+    // Login event'ini dispatch et
+    window.dispatchEvent(new CustomEvent('keycloak-login'));
   } else {
     console.log("ℹ️ Kullanıcı giriş yapmadı - Misafir modu");
   }

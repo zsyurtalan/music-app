@@ -3,7 +3,6 @@ import { ref, computed } from 'vue'
 
 const isPlaying = ref(false)
 const currentTime = ref(0)
-const duration = ref(0)
 const volume = ref(1)
 const currentMusic = ref(null)
 
@@ -45,7 +44,6 @@ const formatTime = (time) => {
       
       <div class="time-info">
         <span>{{ Math.floor(currentTime / 60) }}:{{ (currentTime % 60).toString().padStart(2, '0') }}</span>
-        <span>{{ Math.floor(duration / 60) }}:{{ (duration % 60).toString().padStart(2, '0') }}</span>
       </div>
       
       <div class="volume-control">

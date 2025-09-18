@@ -3,15 +3,19 @@ const Playlist = require('./Playlist');
 const Music = require('./Music');
 const PlaylistMusic = require('./PlaylistMusic');
 
-// User -> Playlist (One-to-Many)
+// User -> Playlist (One-to-Many) - user_id = keycloak_id
 User.hasMany(Playlist, {
   foreignKey: 'user_id',
-  as: 'playlists'
+  sourceKey: 'keycloak_id',
+  as: 'playlists',
+  constraints: false
 });
 
 Playlist.belongsTo(User, {
   foreignKey: 'user_id',
-  as: 'user'
+  targetKey: 'keycloak_id',
+  as: 'user',
+  constraints: false
 });
 
 // Playlist -> PlaylistMusic (One-to-Many)
@@ -49,6 +53,21 @@ Music.belongsToMany(Playlist, {
   foreignKey: 'music_id',
   otherKey: 'playlist_id',
   as: 'playlists'
+});
+
+// User -> Music (One-to-Many) - user_id = keycloak_id
+User.hasMany(Music, {
+  foreignKey: 'user_id',
+  sourceKey: 'keycloak_id',
+  as: 'musics',
+  constraints: false
+});
+
+Music.belongsTo(User, {
+  foreignKey: 'user_id',
+  targetKey: 'keycloak_id',
+  as: 'user',
+  constraints: false
 });
 
 module.exports = {

@@ -95,6 +95,57 @@ router.get('/user/:userId', async (req, res) => {
   }
 });
 
+// Video ID ile müzik bul
+router.get('/find-music/:videoId', async (req, res) => {
+  try {
+    const { videoId } = req.params;
+    
+    console.log('🔍 Müzik aranıyor:', videoId);
+    
+    const music = await Music.findOne({
+      where: { video_id: videoId }
+    });
+    
+    if (!music) {
+      return res.status(404).json({ error: 'Müzik bulunamadı' });
+    }
+    
+    console.log('✅ Müzik bulundu:', music.id);
+    res.json(music);
+  } catch (error) {
+    console.error('❌ Müzik arama hatası:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Kullanıcının favori müziklerini getir
+router.get('/user/:userId/favorite-musics', async (req, res) => {
+  try {
+    console.log('🔍 Favori müzik isteği - Token userId:', req.userId);
+    console.log('🔍 Favori müzik isteği - Param userId:', req.params.userId);
+    
+    // Token'dan gelen kullanıcı ID'si ile parametre ID'sini karşılaştır
+    if (req.userId && req.userId !== req.params.userId) {
+      console.log('❌ Yetkisiz erişim denemesi:', req.userId, '!=', req.params.userId);
+      return res.status(403).json({ error: 'Bu kullanıcının favori müziklerine erişim yetkiniz yok' });
+    }
+
+    const musics = await Music.findAll({
+      where: {
+        is_fav: true,
+        user_id: req.params.userId
+      },
+      order: [['created_at', 'DESC']]
+    });
+
+    console.log('✅ Favori müzikler getirildi:', musics.length, 'adet');
+    res.json(musics);
+  } catch (error) {
+    console.error('❌ Favori müzik getirme hatası:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Kullanıcının favori playlistlerini getir
 router.get('/user/:userId/favorites', async (req, res) => {
   try {
@@ -153,16 +204,23 @@ router.put('/:id/add-music', async (req, res) => {
       return res.status(403).json({ error: 'Bu playlist\'e erişim yetkiniz yok' });
     }
     
-    // Müziği bul veya oluştur
-    let music = await Music.findOne({ where: { video_id: videoId } });
+    // Müziği bul veya oluştur (kullanıcıya özgü)
+    let music = await Music.findOne({ 
+      where: { 
+        video_id: videoId,
+        user_id: req.userId || req.body.user_id
+      } 
+    });
     
     if (!music) {
       music = await Music.create({
         video_id: videoId,
+        user_id: req.userId || req.body.user_id,
         title: title,
         channel_title: channelTitle,
         thumbnail_url: thumbnail,
-        youtube_url: youtubeUrl
+        youtube_url: youtubeUrl,
+        is_fav: false
       });
       console.log('✅ Yeni müzik oluşturuldu:', music.id);
     } else {
@@ -251,6 +309,25 @@ router.put('/:id/remove-music', async (req, res) => {
     
     console.log('✅ Müzik playlist\'ten çıkarıldı:', videoId);
     
+    // Müziğin başka playlist'lerde olup olmadığını kontrol et
+    const remainingPlaylists = await PlaylistMusic.count({
+      where: {
+        music_id: music.id
+      }
+    });
+    
+    // Eğer müzik hiçbir playlist'te yoksa, müziği tamamen sil
+    if (remainingPlaylists === 0) {
+      await Music.destroy({
+        where: {
+          id: music.id
+        }
+      });
+      console.log('✅ Müzik tamamen silindi (hiçbir playlist\'te yok):', videoId);
+    } else {
+      console.log('✅ Müzik korundu (başka playlist\'lerde mevcut):', videoId);
+    }
+    
     // Güncellenmiş playlist'i getir (müziklerle birlikte)
     const updatedPlaylist = await Playlist.findByPk(playlist.id, {
       include: [{
@@ -265,6 +342,37 @@ router.put('/:id/remove-music', async (req, res) => {
     res.json(updatedPlaylist);
   } catch (error) {
     console.error('❌ Müzik çıkarma hatası:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
+// Müziği favori yap/çıkar
+router.put('/music/:musicId/toggle-favorite', async (req, res) => {
+  try {
+    console.log('⭐ Müzik favori toggle isteği:', req.params.musicId);
+    console.log('🔍 Token userId:', req.userId);
+
+    const music = await Music.findByPk(req.params.musicId);
+
+    if (!music) {
+      console.log('❌ Müzik bulunamadı:', req.params.musicId);
+      return res.status(404).json({ error: 'Müzik bulunamadı' });
+    }
+
+    // Favori durumunu tersine çevir
+    const newFavoriteStatus = !music.is_fav;
+    await music.update({ is_fav: newFavoriteStatus });
+
+    console.log('✅ Müzik favori durumu güncellendi:', newFavoriteStatus);
+
+    res.json({
+      id: music.id,
+      is_fav: newFavoriteStatus,
+      message: newFavoriteStatus ? 'Müzik favorilere eklendi' : 'Müzik favorilerden çıkarıldı'
+    });
+  } catch (error) {
+    console.error('❌ Müzik favori toggle hatası:', error);
     res.status(500).json({ error: error.message });
   }
 });

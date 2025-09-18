@@ -3,9 +3,9 @@
 
  const User = sequelize.define('User', {
     id:{
-        type: DataTypes.INTEGER,
+        type: DataTypes.STRING,
         primaryKey: true,
-        autoIncrement: true
+        allowNull: false
     },
     keycloak_id:{
         type: DataTypes.STRING(255),

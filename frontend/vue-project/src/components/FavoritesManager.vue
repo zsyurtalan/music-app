@@ -4,9 +4,8 @@ import { ref, onMounted, onUnmounted } from 'vue'
 const favorites = ref([])
 const searchQuery = ref('')
 const filteredFavorites = ref([])
-const showFavoritesDetails = ref(false)
 
-// Favori müzikleri database'den yükle
+// Favori müzikleri database'den yükle (yeni yapı)
 const loadFavorites = async () => {
   try {
     // Keycloak'dan kullanıcı ID'sini al
@@ -26,8 +25,8 @@ const loadFavorites = async () => {
     
     console.log('🔄 Favori müzikler yükleniyor, kullanıcı ID:', userId)
     
-    // Backend API'den favorileri çek
-    const response = await fetch(`/api/favorites/user/${userId}`, {
+    // Backend API'den favori müzikleri çek
+    const response = await fetch(`http://localhost:5000/api/playlists/user/${userId}/favorite-musics`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
@@ -37,16 +36,21 @@ const loadFavorites = async () => {
     
     if (response.ok) {
       const data = await response.json()
-      favorites.value = data.map(favorite => ({
-        id: favorite.video_id,
+      console.log('⭐ Favori müzikler:', data)
+      
+      // Direkt favori müzikleri kullan
+      favorites.value = data.map(music => ({
+        id: { videoId: music.video_id },
         snippet: {
-          title: favorite.title,
-          channelTitle: favorite.channel_title,
+          title: music.title,
+          channelTitle: music.channel_title,
           thumbnails: {
-            medium: { url: favorite.thumbnail_url }
+            medium: { url: music.thumbnail_url }
           }
         },
-        addedAt: favorite.created_at
+        youtubeUrl: music.youtube_url,
+        addedAt: music.created_at,
+        musicId: music.id
       }))
       filteredFavorites.value = [...favorites.value]
       console.log('✅ Favori müzikler yüklendi:', favorites.value.length, 'adet')
@@ -93,6 +97,11 @@ const searchFavorites = () => {
   })
   
   console.log('✅ Arama tamamlandı, sonuç sayısı:', filteredFavorites.value.length)
+  
+  // Arama sonucu 0 ise özel mesaj göster
+  if (filteredFavorites.value.length === 0 && searchQuery.value.trim()) {
+    console.log('❌ Arama sonucu bulunamadı:', searchQuery.value)
+  }
 }
 
 // localStorage değişikliklerini dinle
@@ -112,20 +121,21 @@ const addToFavorites = async (musicData) => {
     
     console.log('🔄 Favorilere ekleniyor:', musicData.snippet?.title)
     
-    const response = await fetch('/api/favorites', {
-      method: 'POST',
+    // Video ID'yi al
+    const videoId = musicData.id?.videoId || musicData.videoId || musicData.id
+    
+    if (!videoId) {
+      console.error('❌ Video ID bulunamadı')
+      return
+    }
+    
+    // Video ID ile müziği favori yap
+    const response = await fetch(`http://localhost:5000/api/music/toggle-favorite/${videoId}`, {
+      method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${localStorage.getItem('keycloak-token')}`
-      },
-      body: JSON.stringify({
-        user_id: userId,
-        video_id: musicData.id?.videoId || musicData.videoId || musicData.id,
-        title: musicData.snippet?.title || musicData.title,
-        channel_title: musicData.snippet?.channelTitle || musicData.channelTitle,
-        thumbnail_url: musicData.snippet?.thumbnails?.medium?.url || musicData.thumbnail,
-        youtubeUrl: `https://www.youtube.com/watch?v=${musicData.id?.videoId || musicData.videoId || musicData.id}`
-      })
+      }
     })
     
     if (response.ok) {
@@ -193,20 +203,11 @@ const playAllFavorites = () => {
 const removeFromFavorites = async (videoId) => {
   if (confirm('Bu müziği favorilerden çıkarmak istediğinizden emin misiniz?')) {
     try {
-      // Önce favori ID'sini bul
-      const favorite = favorites.value.find(f => f.id === videoId)
-      if (!favorite) {
-        console.error('❌ Favori bulunamadı:', videoId)
-        return
-      }
-      
       console.log('🔄 Favorilerden çıkarılıyor:', videoId)
       
-      // Backend'de favori ID'si ile silme yapılıyor, video_id değil
-      // Bu durumda önce favoriyi bulup ID'sini almalıyız
-      const userId = window.$keycloak?.subject || 'guest'
-      const response = await fetch(`/api/favorites/user/${userId}`, {
-        method: 'GET',
+      // Video ID ile müziği favori yap/çıkar (toggle)
+      const response = await fetch(`http://localhost:5000/api/music/toggle-favorite/${videoId}`, {
+        method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('keycloak-token')}`
@@ -214,35 +215,15 @@ const removeFromFavorites = async (videoId) => {
       })
       
       if (response.ok) {
-        const userFavorites = await response.json()
-        const favoriteToDelete = userFavorites.find(f => f.video_id === videoId)
-        
-        if (favoriteToDelete) {
-          const deleteResponse = await fetch(`/api/favorites/${favoriteToDelete.id}`, {
-            method: 'DELETE',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${localStorage.getItem('keycloak-token')}`
-            }
-          })
-          
-          if (deleteResponse.ok) {
-            console.log('✅ Favorilerden çıkarıldı:', videoId)
-            // Favorileri yeniden yükle
-            await loadFavorites()
-            // Event dispatch et
-            window.dispatchEvent(new CustomEvent('favorites-updated'))
-          } else {
-            console.error('❌ Favori çıkarma hatası:', deleteResponse.status)
-            // Fallback: localStorage'dan çıkar
-            removeFromFavoritesLocalStorage(videoId)
-          }
-        } else {
-          console.error('❌ Favori bulunamadı')
-          removeFromFavoritesLocalStorage(videoId)
-        }
+        const data = await response.json()
+        console.log('✅ Favorilerden çıkarıldı:', data)
+        // Favorileri yeniden yükle
+        await loadFavorites()
+        // Event dispatch et
+        window.dispatchEvent(new CustomEvent('favorites-updated'))
       } else {
-        console.error('❌ Favori listesi alınamadı:', response.status)
+        const errorData = await response.json()
+        console.error('❌ Favori çıkarma hatası:', errorData)
         // Fallback: localStorage'dan çıkar
         removeFromFavoritesLocalStorage(videoId)
       }
@@ -292,18 +273,16 @@ const playFavorite = (video) => {
   }))
 }
 
-// Favori detaylarını göster/gizle
-const toggleFavoritesDetails = () => {
-  showFavoritesDetails.value = !showFavoritesDetails.value
-}
 // Tüm favorileri temizle (Database'den)
 const clearAllFavorites = async () => {
   if (confirm('Tüm favori müzikleri silmek istediğinizden emin misiniz?')) {
     try {
       console.log('🔄 Tüm favoriler temizleniyor...')
       
-      const response = await fetch('/api/favorites', {
-        method: 'DELETE',
+      // Her favori müziği tek tek toggle yaparak favori olmaktan çıkar
+      const userId = window.$keycloak?.subject || 'guest'
+      const response = await fetch(`http://localhost:5000/api/playlists/user/${userId}/favorite-musics`, {
+        method: 'GET',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('keycloak-token')}`
@@ -311,13 +290,33 @@ const clearAllFavorites = async () => {
       })
       
       if (response.ok) {
+        const favoriteMusics = await response.json()
+        console.log('📋 Favori müzikler bulundu:', favoriteMusics.length, 'adet')
+        
+        // Her favori müziği toggle yap
+        for (const music of favoriteMusics) {
+          const toggleResponse = await fetch(`http://localhost:5000/api/music/toggle-favorite/${music.video_id}`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${localStorage.getItem('keycloak-token')}`
+            }
+          })
+          
+          if (toggleResponse.ok) {
+            console.log('✅ Favori çıkarıldı:', music.title)
+          } else {
+            console.error('❌ Favori çıkarma hatası:', music.title)
+          }
+        }
+        
         console.log('✅ Tüm favoriler temizlendi')
         // Favorileri yeniden yükle
         await loadFavorites()
         // Event dispatch et
         window.dispatchEvent(new CustomEvent('favorites-updated'))
       } else {
-        console.error('❌ Favori temizleme hatası:', response.status)
+        console.error('❌ Favori listesi alınamadı:', response.status)
         // Fallback: localStorage'ı temizle
         clearAllFavoritesLocalStorage()
       }
@@ -337,31 +336,6 @@ const clearAllFavoritesLocalStorage = () => {
   console.log('📱 localStorage temizlendi')
 }
 
-// Favori müziği playlist'e ekle
-const addToPlaylist = (video) => {
-  const playlists = JSON.parse(localStorage.getItem('music-playlists') || '[]')
-  if (playlists.length === 0) {
-    alert('Önce bir playlist oluşturun!')
-    return
-  }
-  
-  const playlistNames = playlists.map(p => p.name).join('\n')
-  const playlistName = prompt(`Hangi playlist'e eklemek istiyorsunuz?\n\nMevcut playlist'ler:\n${playlistNames}`)
-  
-  if (playlistName) {
-    const playlist = playlists.find(p => p.name === playlistName)
-    if (playlist && !playlist.videos.find(v => v.id === video.id)) {
-      playlist.videos.push(video)
-      localStorage.setItem('music-playlists', JSON.stringify(playlists))
-      window.dispatchEvent(new CustomEvent('playlists-updated'))
-      alert(`✅ ${video.title} "${playlist.name}" playlist'ine eklendi!`)
-    } else if (playlist && playlist.videos.find(v => v.id === video.id)) {
-      alert('⚠️ Bu müzik zaten bu playlist\'te!')
-    } else {
-      alert('❌ Playlist bulunamadı!')
-    }
-  }
-}
 
 onMounted(() => {
   loadFavorites()
@@ -377,25 +351,16 @@ onUnmounted(() => {
 
 <template>
   <div class="favorites-manager">
-    <div class="favorites-header-minimal">
+    <div class="favorites-header">
       <div class="header-left">
         <h2>❤️ Favori Müziklerim</h2>
         <span class="count-badge">{{ favorites.length }}</span>
       </div>
-      <div class="header-actions-minimal">
-        <button 
-          v-if="favorites.length > 0"
-          @click="toggleFavoritesDetails" 
-          class="modern-btn view-btn"
-          :title="showFavoritesDetails ? 'Kompakt Görünüm' : 'Detaylı Görünüm'"
-        >
-          <span class="btn-icon">{{ showFavoritesDetails ? '📋' : '👁️' }}</span>
-          <span class="btn-text">{{ showFavoritesDetails ? 'Gizle' : 'Görüntüle' }}</span>
-        </button>
+      <div class="header-actions">
         <button 
           v-if="favorites.length > 0"
           @click="playAllFavorites" 
-          class="modern-btn play-all-btn"
+          class="action-btn play-all-btn"
           title="Tüm Favorileri Çal"
         >
           <span class="btn-icon">▶️</span>
@@ -404,7 +369,7 @@ onUnmounted(() => {
         <button 
           v-if="favorites.length > 0"
           @click="clearAllFavorites" 
-          class="modern-btn clear-btn"
+          class="action-btn clear-btn"
           title="Tümünü Temizle"
         >
           <span class="btn-icon">🗑️</span>
@@ -446,34 +411,8 @@ onUnmounted(() => {
         </p>
       </div>
       
-      <!-- Favori Detay Görünümü -->
-      <div v-if="showFavoritesDetails" class="favorites-details">
-        <h4>🎵 Favori Müziklerim</h4>
-        <div v-if="filteredFavorites && filteredFavorites.length > 0" class="music-list">
-          <div v-for="(music, index) in filteredFavorites" :key="music.id || index" class="music-item">
-            <img :src="music.snippet?.thumbnails?.medium?.url || music.thumbnail || `https://img.youtube.com/vi/${music.id?.videoId || music.videoId || music.id}/hqdefault.jpg`" 
-                 :alt="music.snippet?.title || music.title" class="music-thumbnail">
-            <div class="music-info">
-              <h5>{{ music.snippet?.title || music.title }}</h5>
-              <p>{{ music.snippet?.channelTitle || music.channelTitle }}</p>
-            </div>
-            <div class="music-actions">
-              <button @click="playFavorite(music)" class="play-music-btn">▶️ Çal</button>
-              <button @click="addToPlaylist(music)" class="playlist-music-btn">📝 Playlist'e Ekle</button>
-              <button @click="removeFromFavorites(music.id?.videoId || music.videoId || music.id)" class="remove-music-btn">❌ Kaldır</button>
-            </div>
-          </div>
-        </div>
-        <div v-else-if="searchQuery" class="no-music">
-          <p>❌ Arama kriterinize uygun müzik bulunamadı</p>
-        </div>
-        <div v-else class="no-music">
-          <p>📭 Henüz favori müziğiniz yok</p>
-        </div>
-      </div>
-      
-      <!-- Kompakt Görünüm (Varsayılan) -->
-      <div v-else class="favorites-grid">
+      <!-- Favori Müzikler Listesi -->
+      <div class="favorites-grid">
         <div v-if="filteredFavorites && filteredFavorites.length > 0" class="minimal-favorites-list">
           
           <div 
@@ -489,14 +428,12 @@ onUnmounted(() => {
             <div class="music-details">
               <h5 class="music-title">{{ music.snippet?.title || music.title }}</h5>
               <p class="music-channel">{{ music.snippet?.channelTitle || music.channelTitle }}</p>
+              <small v-if="music.playlistName" class="playlist-name-mini">📁 {{ music.playlistName }}</small>
             </div>
             
             <div class="music-actions-mini">
               <button @click="playFavorite(music)" class="action-btn-mini play-mini" title="Çal">
                 ▶️
-              </button>
-              <button @click="addToPlaylist(music)" class="action-btn-mini playlist-mini" title="Playlist'e Ekle">
-                📝
               </button>
               <button @click="removeFromFavorites(music.id?.videoId || music.videoId || music.id)" class="action-btn-mini remove-mini" title="Kaldır">
                 ❌
@@ -504,8 +441,13 @@ onUnmounted(() => {
             </div>
           </div>
         </div>
-        <div v-else-if="searchQuery" class="no-results">
-          <p>❌ Arama kriterinize uygun müzik bulunamadı</p>
+        <div v-else-if="searchQuery && filteredFavorites.length === 0" class="no-results">
+          <div class="no-results-content">
+            <div class="no-results-icon">🔍</div>
+            <h3>Arama Sonucu Bulunamadı</h3>
+            <p>"<strong>{{ searchQuery }}</strong>" için favori müziklerinizde sonuç bulunamadı</p>
+            <p class="search-tip">💡 Farklı anahtar kelimeler deneyin veya arama kutusunu temizleyin</p>
+          </div>
         </div>
         <div v-else class="no-music">
           <p>📭 Henüz favori müziğiniz yok</p>
@@ -518,14 +460,27 @@ onUnmounted(() => {
 <style scoped>
 .favorites-manager {
   width: 100%;
-  padding: 0.75rem;
+  padding: 1.5rem;
   background: var(--card);
-  border-radius: 15px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
   margin-bottom: 2rem;
-  backdrop-filter: blur(10px);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+  backdrop-filter: blur(15px);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
   transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.favorites-manager::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, var(--primary), var(--secondary), var(--accent));
+  border-radius: 20px 20px 0 0;
 }
 
 .favorites-header {
@@ -536,30 +491,81 @@ onUnmounted(() => {
   flex-wrap: wrap;
   gap: 1rem;
   padding-bottom: 1rem;
-  border-bottom: 1px solid #e9ecef;
+  border-bottom: 2px solid rgba(255, 215, 0, 0.2);
 }
 
 .favorites-header h2 {
   color: var(--text);
-  font-size: 1.5rem;
-  font-weight: 600;
+  font-size: 1.8rem;
+  font-weight: 700;
   margin: 0;
+  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.count-badge {
+  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  color: white;
+  padding: 0.5rem 1rem;
+  border-radius: 20px;
+  font-weight: 600;
+  font-size: 0.9rem;
+  box-shadow: 0 4px 15px rgba(255, 215, 0, 0.3);
+  margin-left: 1rem;
 }
 
 .header-actions {
   display: flex;
-  gap: 0.5rem;
+  gap: 0.75rem;
+  flex-wrap: wrap;
 }
 
-.clear-btn, .view-btn {
+.action-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.25rem;
   border: none;
-  border-radius: 8px;
-  padding: 1.2rem 1.5rem;
+  border-radius: 12px;
   cursor: pointer;
   font-size: 0.9rem;
   font-weight: 600;
   transition: all 0.3s ease;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+  position: relative;
+  overflow: hidden;
+}
+
+.action-btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+  transition: left 0.5s;
+}
+
+.action-btn:hover::before {
+  left: 100%;
+}
+
+.action-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+}
+
+
+.play-all-btn {
+  background: linear-gradient(135deg, #28a745, #20c997);
+  color: white;
+}
+
+.play-all-btn:hover {
+  background: linear-gradient(135deg, #218838, #1ea085);
 }
 
 .clear-btn {
@@ -569,78 +575,86 @@ onUnmounted(() => {
 
 .clear-btn:hover {
   background: linear-gradient(135deg, #c82333, #bd2130);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(220, 53, 69, 0.3);
-}
-
-.view-btn {
-  background: linear-gradient(135deg, #9c27b0, #7b1fa2);
-  color: white;
-}
-
-.view-btn:hover {
-  background: linear-gradient(135deg, #8e24aa, #6a1b9a);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(156, 39, 176, 0.3);
 }
 
 /* Arama Kutusu */
 .search-section {
   margin-bottom: 1.5rem;
-  padding: 1rem;
-  background: var(--card);
-  border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  backdrop-filter: blur(10px);
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+  padding: 1.5rem;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.05));
+  border-radius: 15px;
+  border: 1px solid rgba(255, 215, 0, 0.3);
+  backdrop-filter: blur(15px);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
 }
 
 .search-box {
   display: flex;
-  gap: 0.5rem;
+  gap: 1rem;
+  align-items: center;
 }
 
 .search-input {
   flex: 1;
-  padding: 0.75rem 1rem;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 8px;
+  padding: 1rem 1.5rem;
+  border: 2px solid rgba(255, 215, 0, 0.3);
+  border-radius: 12px;
   outline: none;
   font-size: 1rem;
   transition: all 0.3s ease;
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.9);
   color: var(--text);
   backdrop-filter: blur(10px);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
 }
 
 .search-input:focus {
   border-color: var(--primary);
-  box-shadow: 0 0 0 2px rgba(255, 215, 0, 0.2);
-  background: rgba(255, 255, 255, 0.2);
+  box-shadow: 0 0 0 3px rgba(255, 215, 0, 0.2);
+  background: rgba(255, 255, 255, 1);
+  transform: translateY(-1px);
 }
 
 .search-input::placeholder {
   color: var(--text);
-  opacity: 0.7;
+  opacity: 0.6;
+  font-style: italic;
 }
 
 .search-btn {
   background: linear-gradient(135deg, var(--primary), var(--secondary));
   color: white;
   border: none;
-  border-radius: 8px;
-  padding: 0.75rem 1.5rem;
+  border-radius: 12px;
+  padding: 1rem 2rem;
   cursor: pointer;
-  font-size: 0.9rem;
+  font-size: 1rem;
   font-weight: 600;
   transition: all 0.3s ease;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 15px rgba(255, 215, 0, 0.3);
+  position: relative;
+  overflow: hidden;
+}
+
+.search-btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+  transition: left 0.5s;
+}
+
+.search-btn:hover::before {
+  left: 100%;
 }
 
 .search-btn:hover {
   background: linear-gradient(135deg, var(--secondary), var(--accent));
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(255, 215, 0, 0.4);
 }
 
 .add-form {
@@ -768,60 +782,110 @@ onUnmounted(() => {
 
 .empty-state {
   text-align: center;
-  padding: 3rem;
+  padding: 4rem 2rem;
   color: var(--text);
   opacity: 0.8;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.05));
+  border-radius: 15px;
+  border: 2px dashed rgba(255, 215, 0, 0.3);
+  backdrop-filter: blur(10px);
+}
+
+.empty-state p {
+  font-size: 1.2rem;
+  font-weight: 500;
+  margin: 0.5rem 0;
 }
 
 .favorites-stats {
   text-align: center;
   margin-bottom: 1.5rem;
-  padding: 1rem;
+  padding: 1.5rem;
   background: linear-gradient(135deg, var(--primary), var(--secondary));
   color: white;
-  border-radius: 8px;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+  border-radius: 15px;
+  box-shadow: 0 8px 25px rgba(255, 215, 0, 0.3);
+  position: relative;
+  overflow: hidden;
+}
+
+.favorites-stats::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(45deg, transparent 30%, rgba(255, 255, 255, 0.1) 50%, transparent 70%);
+  animation: shimmer 3s infinite;
+}
+
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
 }
 
 .favorites-stats p {
   margin: 0;
-  font-size: 1.1rem;
-  font-weight: bold;
+  font-size: 1.2rem;
+  font-weight: 600;
+  position: relative;
+  z-index: 1;
 }
 
 /* Minimal Favori Listesi */
 .minimal-favorites-list {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 1rem;
 }
 
 .minimal-favorite-item {
   display: flex;
   align-items: center;
-  gap: 1rem;
-  padding: 1rem;
-  background: var(--card);
-  border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  gap: 1.25rem;
+  padding: 1.5rem;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.7));
+  border-radius: 15px;
+  border: 1px solid rgba(255, 215, 0, 0.3);
   transition: all 0.3s ease;
-  backdrop-filter: blur(10px);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  backdrop-filter: blur(15px);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+  position: relative;
+  overflow: hidden;
+}
+
+.minimal-favorite-item::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 4px;
+  height: 100%;
+  background: linear-gradient(180deg, var(--primary), var(--secondary));
+  border-radius: 15px 0 0 15px;
 }
 
 .minimal-favorite-item:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+  transform: translateY(-3px);
+  box-shadow: 0 12px 35px rgba(0, 0, 0, 0.15);
   border-color: var(--primary);
-  background: rgba(255, 255, 255, 0.1);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 1), rgba(255, 255, 255, 0.9));
 }
 
 .music-thumbnail-mini {
-  width: 50px;
-  height: 50px;
-  border-radius: 6px;
+  width: 60px;
+  height: 60px;
+  border-radius: 12px;
   overflow: hidden;
   flex-shrink: 0;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+  transition: all 0.3s ease;
+}
+
+.music-thumbnail-mini:hover {
+  transform: scale(1.05);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
 }
 
 .music-thumbnail-mini img {
@@ -836,79 +900,116 @@ onUnmounted(() => {
 }
 
 .music-title {
-  margin: 0 0 0.25rem 0;
-  font-size: 0.9rem;
-  font-weight: 600;
+  margin: 0 0 0.5rem 0;
+  font-size: 1rem;
+  font-weight: 700;
   color: var(--text);
   line-height: 1.3;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  background: linear-gradient(135deg, var(--text), var(--primary));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 .music-channel {
   margin: 0;
-  font-size: 0.8rem;
+  font-size: 0.9rem;
   color: var(--text);
-  opacity: 0.7;
+  opacity: 0.8;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  font-weight: 500;
+}
+
+.playlist-name {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.7rem;
+  color: var(--accent);
+  opacity: 0.8;
+  font-weight: 500;
+}
+
+.playlist-name-mini {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.6rem;
+  color: var(--accent);
+  opacity: 0.8;
+  font-weight: 500;
 }
 
 .music-actions-mini {
   display: flex;
-  gap: 0.5rem;
+  gap: 0.75rem;
   flex-shrink: 0;
 }
 
 .action-btn-mini {
-  width: 32px;
-  height: 32px;
+  width: 40px;
+  height: 40px;
   border: none;
-  border-radius: 6px;
+  border-radius: 10px;
   cursor: pointer;
-  font-size: 0.8rem;
+  font-size: 1rem;
   display: flex;
   align-items: center;
   justify-content: center;
   transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+}
+
+.action-btn-mini::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+  transition: left 0.5s;
+}
+
+.action-btn-mini:hover::before {
+  left: 100%;
+}
+
+.action-btn-mini:hover {
+  transform: scale(1.15) translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
 }
 
 .play-mini {
   background: linear-gradient(135deg, var(--primary), var(--secondary));
   color: white;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
 }
 
 .play-mini:hover {
   background: linear-gradient(135deg, var(--secondary), var(--accent));
-  transform: scale(1.1);
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
 }
 
 .playlist-mini {
   background: linear-gradient(135deg, #9c27b0, #7b1fa2);
   color: white;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
 }
 
 .playlist-mini:hover {
   background: linear-gradient(135deg, #8e24aa, #6a1b9a);
-  transform: scale(1.1);
-  box-shadow: 0 4px 10px rgba(156, 39, 176, 0.3);
 }
 
 .remove-mini {
   background: linear-gradient(135deg, #dc3545, #c82333);
   color: white;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
 }
 
 .remove-mini:hover {
   background: linear-gradient(135deg, #c82333, #bd2130);
-  transform: scale(1.1);
-  box-shadow: 0 4px 10px rgba(220, 53, 69, 0.3);
 }
 
 .play-all-btn-minimal {
@@ -984,14 +1085,6 @@ onUnmounted(() => {
 }
 
 /* Buton Renkleri */
-.view-btn {
-  background: linear-gradient(135deg, #9c27b0, #7b1fa2);
-  color: white;
-}
-
-.view-btn:hover {
-  background: linear-gradient(135deg, #8e24aa, #6a1b9a);
-}
 
 .play-all-btn {
   background: linear-gradient(135deg, #28a745, #20c997);
@@ -1114,117 +1207,6 @@ onUnmounted(() => {
   transform: translateY(-1px);
 }
 
-/* Favori Detay Görünümü */
-.favorites-details {
-  margin-top: 1.5rem;
-  padding: 1.5rem;
-  background: white;
-  border-radius: 10px;
-  border: 1px solid #e9ecef;
-}
-
-.favorites-details h4 {
-  margin: 0 0 1rem 0;
-  color: #333;
-  font-size: 1.1rem;
-  font-weight: 600;
-}
-
-.music-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.music-item {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 1rem;
-  background: #f8f9fa;
-  border-radius: 8px;
-  border: 1px solid #e9ecef;
-  transition: all 0.3s ease;
-}
-
-.music-item:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  background: white;
-}
-
-.music-thumbnail {
-  width: 50px;
-  height: 50px;
-  object-fit: cover;
-  border-radius: 6px;
-  flex-shrink: 0;
-}
-
-.music-info {
-  flex: 1;
-}
-
-.music-info h5 {
-  margin: 0 0 0.25rem 0;
-  color: #333;
-  font-size: 0.9rem;
-  font-weight: 600;
-  line-height: 1.3;
-}
-
-.music-info p {
-  margin: 0;
-  color: #666;
-  font-size: 0.8rem;
-}
-
-.music-actions {
-  display: flex;
-  gap: 0.5rem;
-  flex-shrink: 0;
-}
-
-.play-music-btn, .playlist-music-btn, .remove-music-btn {
-  border: none;
-  border-radius: 6px;
-  padding: 0.5rem 0.75rem;
-  cursor: pointer;
-  font-size: 0.75rem;
-  font-weight: 600;
-  transition: all 0.3s ease;
-  white-space: nowrap;
-}
-
-.play-music-btn {
-  background: #f6b92c;
-  color: white;
-}
-
-.play-music-btn:hover {
-  background: #f5a21d;
-  transform: translateY(-1px);
-}
-
-.playlist-music-btn {
-  background: #9c27b0;
-  color: white;
-}
-
-.playlist-music-btn:hover {
-  background: #7b1fa2;
-  transform: translateY(-1px);
-}
-
-.remove-music-btn {
-  background: #dc3545;
-  color: white;
-}
-
-.remove-music-btn:hover {
-  background: #c82333;
-  transform: translateY(-1px);
-}
 
 .no-music {
   text-align: center;
@@ -1239,89 +1221,208 @@ onUnmounted(() => {
 
 .no-results {
   text-align: center;
-  padding: 2rem;
+  padding: 3rem 2rem;
   color: #666;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.05));
+  border-radius: 15px;
+  border: 2px dashed rgba(255, 215, 0, 0.3);
+  backdrop-filter: blur(10px);
+  margin: 2rem 0;
+}
+
+.no-results-content {
+  max-width: 400px;
+  margin: 0 auto;
+}
+
+.no-results-icon {
+  font-size: 4rem;
+  margin-bottom: 1rem;
+  opacity: 0.6;
+}
+
+.no-results h3 {
+  margin: 0 0 1rem 0;
+  color: #333;
+  font-size: 1.5rem;
+  font-weight: 600;
+  background: linear-gradient(135deg, #333, #666);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 .no-results p {
-  margin: 0;
+  margin: 0.5rem 0;
   font-size: 1rem;
+  line-height: 1.5;
+}
+
+.no-results strong {
+  color: #f5a21d;
+  font-weight: 700;
+}
+
+.search-tip {
+  font-size: 0.9rem !important;
+  color: #888 !important;
+  font-style: italic;
+  margin-top: 1rem !important;
+  padding: 0.75rem 1rem;
+  background: rgba(255, 215, 0, 0.1);
+  border-radius: 8px;
+  border-left: 4px solid #f5a21d;
 }
 
 @media (max-width: 768px) {
+  .favorites-manager {
+    padding: 1rem;
+    border-radius: 15px;
+  }
+  
   .favorites-header {
     flex-direction: column;
     align-items: stretch;
+    gap: 1rem;
+  }
+  
+  .favorites-header h2 {
+    font-size: 1.5rem;
+    text-align: center;
+  }
+  
+  .count-badge {
+    margin-left: 0;
+    margin-top: 0.5rem;
+    align-self: center;
   }
   
   .header-actions {
     justify-content: center;
+    flex-wrap: wrap;
+  }
+  
+  .action-btn {
+    padding: 0.6rem 1rem;
+    font-size: 0.8rem;
   }
   
   .search-box {
     flex-direction: column;
+    gap: 0.75rem;
   }
   
-  .favorite-item {
+  .search-input {
+    padding: 0.875rem 1.25rem;
+    font-size: 0.9rem;
+  }
+  
+  .search-btn {
+    padding: 0.875rem 1.5rem;
+    font-size: 0.9rem;
+  }
+  
+  .minimal-favorite-item {
+    padding: 1rem;
+    gap: 1rem;
     flex-direction: column;
     text-align: center;
   }
   
-  .favorite-actions {
-    flex-direction: row;
-    justify-content: center;
-  }
-  
-  .music-grid {
-    grid-template-columns: 1fr;
-  }
-  
-  .music-actions {
-    flex-direction: column;
-    gap: 0.25rem;
-  }
-  
-  .play-music-btn, .playlist-music-btn, .remove-music-btn {
-    font-size: 0.7rem;
-    padding: 0.4rem 0.6rem;
-  }
-  
-  .minimal-favorite-item {
-    padding: 0.75rem;
-    gap: 0.75rem;
-  }
-  
   .music-thumbnail-mini {
-    width: 40px;
-    height: 40px;
+    width: 50px;
+    height: 50px;
+    align-self: center;
+  }
+  
+  .music-details {
+    text-align: center;
   }
   
   .music-title {
-    font-size: 0.8rem;
+    font-size: 0.9rem;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: unset;
   }
   
   .music-channel {
-    font-size: 0.7rem;
+    font-size: 0.8rem;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: unset;
+  }
+  
+  .music-actions-mini {
+    justify-content: center;
+    gap: 0.5rem;
   }
   
   .action-btn-mini {
-    width: 28px;
-    height: 28px;
-    font-size: 0.7rem;
-  }
-  
-  .modern-btn {
-    padding: 0.6rem 1rem;
-    font-size: 0.8rem;
-    gap: 0.4rem;
-  }
-  
-  .btn-text {
-    font-size: 0.8rem;
-  }
-  
-  .btn-icon {
+    width: 35px;
+    height: 35px;
     font-size: 0.9rem;
   }
+  
+  .favorites-stats {
+    padding: 1rem;
+  }
+  
+  .favorites-stats p {
+    font-size: 1rem;
+  }
+  
+  .empty-state {
+    padding: 2rem 1rem;
+  }
+  
+  .empty-state p {
+    font-size: 1rem;
+  }
+  
+  .no-results {
+    padding: 2rem 1rem;
+    margin: 1rem 0;
+  }
+  
+  .no-results-icon {
+    font-size: 3rem;
+  }
+  
+  .no-results h3 {
+    font-size: 1.3rem;
+  }
+  
+  .no-results p {
+    font-size: 0.9rem;
+  }
+  
+  .search-tip {
+    font-size: 0.8rem !important;
+    padding: 0.5rem 0.75rem;
+  }
+}
+
+.favorite-music-btn {
+  background: linear-gradient(135deg, #ffd700 0%, #ffed4e 100%);
+  color: #333;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 4px rgba(255, 215, 0, 0.3);
+}
+
+.favorite-music-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(255, 215, 0, 0.4);
+}
+
+.action-btn-mini.favorite-mini {
+  background: linear-gradient(135deg, #ffd700 0%, #ffed4e 100%);
+  color: #333;
 }
 </style>

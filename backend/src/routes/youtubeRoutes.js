@@ -28,7 +28,6 @@ router.get('/video/:videoId', async (req, res) => {
       channelTitle: video.snippet.channelTitle,
       thumbnail: video.snippet.thumbnails.medium?.url || video.snippet.thumbnails.default?.url,
       youtubeUrl: `https://www.youtube.com/watch?v=${video.id}`,
-      duration: video.contentDetails.duration,
       description: video.snippet.description
     };
 

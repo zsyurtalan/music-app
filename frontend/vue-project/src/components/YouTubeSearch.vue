@@ -14,7 +14,11 @@ export default {
       selectedVideo: null,
       playlists: [],
       isAuthenticated: false,
-      currentVideo: null
+      currentVideo: null,
+      pendingSearchQuery: '', // Login sonrası arama yapılacak query
+      pendingVideos: [], // Login sonrası gösterilecek videolar
+      searchHistory: [], // Arama geçmişi
+      showSearchHistory: false // Arama geçmişi gösterilsin mi
     }
   },
   mounted() {
@@ -24,10 +28,23 @@ export default {
     // Keycloak durumunu kontrol et
     if (window.$keycloak) {
       this.isAuthenticated = window.$keycloak.authenticated
+      
+      // Login sonrası bekleyen arama varsa devam et
+      if (this.pendingSearchQuery && this.pendingVideos.length > 0) {
+        this.searchQuery = this.pendingSearchQuery
+        this.videos = this.pendingVideos
+        this.hasSearched = true
+        this.pendingSearchQuery = ''
+        this.pendingVideos = []
+      }
     }
+    
+    // Keycloak login event'ini dinle
+    window.addEventListener('keycloak-login', this.onKeycloakLogin)
   },
   beforeUnmount() {
     window.removeEventListener('playlists-updated', this.loadPlaylists)
+    window.removeEventListener('keycloak-login', this.onKeycloakLogin)
   },
   methods: {
     async searchYouTube() {
@@ -118,7 +135,7 @@ export default {
       this.playMusic({ id: { videoId: videoId } })
     },
   
-    addToFavorites(video) {
+    async addToFavorites(video) {
       if (!this.isAuthenticated) {
         alert('Favorilere eklemek için giriş yapın!')
         return
@@ -130,50 +147,62 @@ export default {
         return
       }
       
-      // Favorileri yükle
-      const saved = localStorage.getItem('music-favorites')
-      const favorites = saved ? JSON.parse(saved) : []
-      
-      // Zaten var mı kontrol et
-      const existingFavorite = favorites.find(fav => {
-        const favId = fav.id?.videoId || fav.videoId || fav.id
-        return favId === videoId
-      })
-      
-      if (existingFavorite) {
-        this.showMessage('⚠️ Bu müzik zaten favorilerinizde!')
-        return
-      }
-      
-      // Favori objesini oluştur
-      const favoriteData = {
-        id: {
-          videoId: videoId
-        },
-        snippet: {
+      try {
+        console.log('🔄 Favorilere ekleniyor:', video.snippet?.title || video.title)
+        
+        // Önce müziği database'e ekle (eğer yoksa)
+        const musicData = {
+          video_id: videoId,
           title: video.snippet?.title || video.title,
-          channelTitle: video.snippet?.channelTitle || video.channelTitle,
-          thumbnails: {
-            medium: {
-              url: video.snippet?.thumbnails?.medium?.url || video.thumbnail || `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`
+          channel_title: video.snippet?.channelTitle || video.channelTitle,
+          thumbnail_url: video.snippet?.thumbnails?.medium?.url || video.thumbnail || `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
+          youtube_url: `https://www.youtube.com/watch?v=${videoId}`,
+          is_fav: true // Direkt favori olarak ekle
+        }
+        
+        // Müziği database'e ekle
+        const createResponse = await fetch('http://localhost:5000/api/music/create', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('keycloak-token')}`
+          },
+          body: JSON.stringify(musicData)
+        })
+        
+        if (createResponse.ok) {
+          console.log('✅ Müzik database\'e eklendi ve favori yapıldı')
+          this.showMessage(`✅ ${video.snippet?.title || video.title} favorilere eklendi!`)
+          
+          // Event dispatch et
+          window.dispatchEvent(new CustomEvent('favorites-updated'))
+        } else {
+          // Müzik zaten varsa, favori yap
+          const toggleResponse = await fetch(`http://localhost:5000/api/music/toggle-favorite/${videoId}`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${localStorage.getItem('keycloak-token')}`
             }
+          })
+          
+          if (toggleResponse.ok) {
+            const data = await toggleResponse.json()
+            console.log('✅ Favori durumu güncellendi:', data)
+            this.showMessage(`✅ ${video.snippet?.title || video.title} favorilere eklendi!`)
+            
+            // Event dispatch et
+            window.dispatchEvent(new CustomEvent('favorites-updated'))
+          } else {
+            const errorData = await toggleResponse.json()
+            console.error('❌ Favori ekleme hatası:', errorData)
+            this.showMessage(`❌ Favori eklenemedi: ${errorData.error}`, 'error')
           }
-        },
-        videoId: videoId,
-        youtubeUrl: `https://www.youtube.com/watch?v=${videoId}`,
-        addedAt: new Date().toISOString()
+        }
+      } catch (error) {
+        console.error('❌ Favori ekleme hatası:', error)
+        this.showMessage('❌ Favori eklenemedi!', 'error')
       }
-      
-      // Favorilere ekle
-      favorites.push(favoriteData)
-      
-      // localStorage'a kaydet
-      localStorage.setItem('music-favorites', JSON.stringify(favorites))
-      
-      // Event dispatch et
-      window.dispatchEvent(new CustomEvent('favorites-updated'))
-      
-      this.showMessage('❤️ Favorilere eklendi: ' + favoriteData.snippet.title)
     },
   
     togglePlaylistMenu(video) {
@@ -227,7 +256,9 @@ export default {
       try {
         console.log('🔄 Müzik playlist\'e ekleniyor:', video.snippet?.title || video.title)
         
-        const response = await fetch(`/api/playlists/${playlistId}/add-music`, {
+        const userId = window.$keycloak?.subject || 'guest'
+        
+        const response = await fetch(`http://localhost:5000/api/playlists/${playlistId}/add-music`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
@@ -239,7 +270,8 @@ export default {
             channelTitle: video.snippet?.channelTitle || video.channelTitle,
             thumbnail: video.snippet?.thumbnails?.medium?.url || video.thumbnail || `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
             videoId: videoId,
-            youtubeUrl: `https://www.youtube.com/watch?v=${videoId}`
+            youtubeUrl: `https://www.youtube.com/watch?v=${videoId}`,
+            user_id: userId
           })
         })
         
@@ -270,6 +302,79 @@ export default {
       this.closePlaylistMenu()
     },
   
+    // Arama geçmişini yükle
+    async loadSearchHistory() {
+      if (!this.isAuthenticated) {
+        this.searchHistory = []
+        return
+      }
+      
+      try {
+        const userId = window.$keycloak?.subject
+        if (!userId) return
+        
+        const response = await fetch(`http://localhost:5000/api/music/search-history/${userId}`, {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('keycloak-token')}`
+          }
+        })
+        
+        if (response.ok) {
+          this.searchHistory = await response.json()
+          console.log('🔍 Arama geçmişi yüklendi:', this.searchHistory.length, 'müzik')
+        }
+      } catch (error) {
+        console.error('❌ Arama geçmişi yükleme hatası:', error)
+      }
+    },
+
+    // Arama kutusuna odaklanıldığında
+    onSearchFocus() {
+      if (this.isAuthenticated) {
+        this.showSearchHistory = true
+        this.loadSearchHistory()
+      }
+    },
+
+    // Arama geçmişini gizle
+    hideSearchHistory() {
+      // Kısa bir gecikme ile gizle (tıklama işlemi tamamlansın)
+      setTimeout(() => {
+        this.showSearchHistory = false
+      }, 200)
+    },
+
+    // Arama geçmişinden müzik seç
+    selectFromHistory(music) {
+      this.searchQuery = music.title
+      this.showSearchHistory = false
+      // Müziği oynat
+      this.playMusic({
+        id: { videoId: music.video_id },
+        snippet: {
+          title: music.title,
+          channelTitle: music.channel_title,
+          thumbnails: { medium: { url: music.thumbnail_url } }
+        }
+      })
+    },
+
+    // Zaman formatla
+    formatTime(dateString) {
+      const date = new Date(dateString)
+      const now = new Date()
+      const diff = now - date
+      const minutes = Math.floor(diff / 60000)
+      const hours = Math.floor(diff / 3600000)
+      const days = Math.floor(diff / 86400000)
+
+      if (minutes < 1) return 'Az önce'
+      if (minutes < 60) return `${minutes} dk önce`
+      if (hours < 24) return `${hours} saat önce`
+      if (days < 7) return `${days} gün önce`
+      return date.toLocaleDateString('tr-TR')
+    },
+
     async loadPlaylists() {
       // Sadece giriş yapmış kullanıcılar için playlist'leri yükle
       if (!this.isAuthenticated) {
@@ -336,13 +441,42 @@ export default {
     
     login() {
       if (window.$keycloak) {
-        console.log('�� Login başlatılıyor...')
+        console.log(' Login başlatılıyor...')
+        
+        // Mevcut arama sonuçlarını sakla
+        if (this.hasSearched && this.videos.length > 0) {
+          this.pendingSearchQuery = this.searchQuery
+          this.pendingVideos = [...this.videos]
+          console.log('💾 Arama sonuçları saklandı:', this.pendingSearchQuery)
+        }
+        
         window.$keycloak.login({
           redirectUri: window.location.origin
         })
       } else {
         console.error('❌ Keycloak bulunamadı!')
         alert('Giriş yapılamıyor. Lütfen sayfayı yenileyin.')
+      }
+    },
+    
+    onKeycloakLogin() {
+      console.log('✅ Keycloak login eventi alındı')
+      this.isAuthenticated = true
+      
+      // Bekleyen arama sonuçlarını göster
+      if (this.pendingSearchQuery && this.pendingVideos.length > 0) {
+        this.searchQuery = this.pendingSearchQuery
+        this.videos = this.pendingVideos
+        this.hasSearched = true
+        this.pendingSearchQuery = ''
+        this.pendingVideos = []
+        console.log('🎵 Arama sonuçları geri yüklendi:', this.searchQuery)
+      } else if (this.pendingSearchQuery) {
+        // Sadece query varsa yeniden arama yap
+        this.searchQuery = this.pendingSearchQuery
+        this.pendingSearchQuery = ''
+        this.searchYouTube()
+        console.log('🔍 Bekleyen arama yeniden yapılıyor:', this.searchQuery)
       }
     },
   
@@ -377,13 +511,41 @@ export default {
     <h2>🎵 Müzik Arama</h2>
     
     <div class="search-container">
-      <input 
-        v-model="searchQuery" 
-        @keyup.enter="searchYouTube"
-        @input="onSearchInput"
-        placeholder="Müzik ara..."
-        class="search-input"
-      >
+      <div class="search-input-wrapper">
+        <input 
+          v-model="searchQuery" 
+          @keyup.enter="searchYouTube"
+          @input="onSearchInput"
+          @focus="onSearchFocus"
+          @blur="hideSearchHistory"
+          placeholder="Müzik ara..."
+          class="search-input"
+        >
+        
+        <!-- Arama geçmişi dropdown -->
+        <div v-if="showSearchHistory && searchHistory.length > 0" class="search-history">
+          <div class="search-history-header">
+            <h4>🔍 Son Aramalar</h4>
+            <span class="history-count">{{ searchHistory.length }} müzik</span>
+          </div>
+          <div class="history-list">
+            <div 
+              v-for="music in searchHistory" 
+              :key="music.id"
+              @click="selectFromHistory(music)"
+              class="history-item"
+            >
+              <img :src="music.thumbnail_url" :alt="music.title" class="history-thumbnail">
+              <div class="history-info">
+                <h5 class="history-title">{{ music.title }}</h5>
+                <p class="history-channel">{{ music.channel_title }}</p>
+                <span class="history-time">{{ formatTime(music.created_at) }}</span>
+              </div>
+              <div class="history-play">▶️</div>
+            </div>
+          </div>
+        </div>
+      </div>
       <button @click="searchYouTube" class="search-btn">Ara</button>
     </div>
 
@@ -458,19 +620,176 @@ export default {
   display: flex;
   gap: 1rem;
   margin-bottom: 2rem;
+  position: relative;
+  max-width: 100%;
+  width: 100%;
+}
+
+.search-input-wrapper {
+  flex: 1;
+  position: relative;
 }
 
 .search-input {
-  flex: 1;
+  width: 100%;
   padding: 0.75rem 1rem;
-  border: 2px solid #ddd;
+  border: 2px solid rgba(255, 255, 255, 0.2);
   border-radius: 25px;
   outline: none;
   font-size: 1rem;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  color: #333;
+  transition: all 0.3s ease;
+  box-sizing: border-box;
 }
 
 .search-input:focus {
   border-color: #667eea;
+  background: rgba(255, 255, 255, 0.2);
+  box-shadow: 0 0 20px rgba(102, 126, 234, 0.3);
+}
+
+.search-input::placeholder {
+  color: rgba(0, 0, 0, 0.6);
+  font-weight: 400;
+}
+
+/* Arama Geçmişi Stilleri */
+.search-history {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  border-radius: 16px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  max-height: 400px;
+  overflow: hidden;
+  margin-top: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.search-history-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+  background: rgba(255, 255, 255, 0.8);
+}
+
+.search-history-header h4 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+  opacity: 0.8;
+}
+
+.history-count {
+  font-size: 12px;
+  color: #666;
+  background: rgba(0, 0, 0, 0.05);
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-weight: 500;
+}
+
+.history-list {
+  max-height: 300px;
+  overflow-y: auto;
+  padding: 8px 0;
+}
+
+.history-item {
+  display: flex;
+  align-items: center;
+  padding: 12px 20px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.history-item:hover {
+  background: rgba(102, 126, 234, 0.08);
+  transform: translateX(4px);
+}
+
+.history-item:last-child {
+  border-bottom: none;
+}
+
+.history-thumbnail {
+  width: 48px;
+  height: 48px;
+  border-radius: 8px;
+  margin-right: 12px;
+  object-fit: cover;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.history-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.history-title {
+  margin: 0 0 4px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-channel {
+  margin: 0 0 4px 0;
+  font-size: 12px;
+  color: #666;
+  opacity: 0.8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-time {
+  font-size: 11px;
+  color: #999;
+  font-weight: 500;
+  background: rgba(0, 0, 0, 0.05);
+  padding: 2px 6px;
+  border-radius: 8px;
+  display: inline-block;
+}
+
+.history-play {
+  font-size: 16px;
+  color: #667eea;
+  opacity: 0.6;
+  transition: all 0.2s ease;
+  margin-left: 8px;
+}
+
+.history-item:hover .history-play {
+  opacity: 1;
+  transform: scale(1.1);
 }
 
 .search-btn {
@@ -481,6 +800,22 @@ export default {
   padding: 0.75rem 1.5rem;
   cursor: pointer;
   font-size: 1rem;
+  font-weight: 600;
+  min-width: 100px;
+  height: fit-content;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 15px rgba(245, 162, 29, 0.3);
+}
+
+.search-btn:hover {
+  background: #e6941a;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(245, 162, 29, 0.4);
+}
+
+.search-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 10px rgba(245, 162, 29, 0.3);
 }
 
 .welcome-message {
@@ -733,6 +1068,44 @@ export default {
   
   .search-container {
     flex-direction: column;
+    gap: 0.75rem;
+  }
+  
+  .search-input-wrapper {
+    margin-bottom: 0;
+  }
+  
+  .search-btn {
+    width: 100%;
+    min-width: auto;
+    padding: 0.875rem 1.5rem;
+  }
+  
+  .search-history {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 90vw;
+    max-width: 400px;
+    max-height: 70vh;
+  }
+  
+  .history-item {
+    padding: 16px 20px;
+  }
+  
+  .history-thumbnail {
+    width: 56px;
+    height: 56px;
+  }
+  
+  .history-title {
+    font-size: 15px;
+  }
+  
+  .history-channel {
+    font-size: 13px;
   }
   
   .example-tags {

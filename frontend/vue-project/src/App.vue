@@ -29,6 +29,9 @@ onMounted(() => {
         console.log('🔑 Token kaydedildi:', window.$keycloak.token.substring(0, 50) + '...')
       }
       
+      // Login event'ini dispatch et
+      window.dispatchEvent(new CustomEvent('keycloak-login'))
+      
       // Kullanıcı verilerini temizle ve yeniden yükle
       clearUserData()
       window.location.reload() // Sayfayı yenile

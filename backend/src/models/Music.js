@@ -10,8 +10,14 @@ const Music = sequelize.define('Music', {
   video_id: {
     type: DataTypes.STRING,
     allowNull: false,
-    unique: true,
+    unique: false, // user_id ile birlikte unique olacak
     comment: 'YouTube video ID'
+  },
+  user_id: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    unique: false, // user_id ile birlikte unique olacak
+    comment: 'User ID from Keycloak'
   },
   title: {
     type: DataTypes.STRING,
@@ -33,10 +39,11 @@ const Music = sequelize.define('Music', {
     allowNull: true,
     comment: 'Full YouTube URL'
   },
-  duration: {
-    type: DataTypes.STRING,
-    allowNull: true,
-    comment: 'Video duration'
+  is_fav: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false,
+    comment: 'Is music favorite'
   },
   created_at: {
     type: DataTypes.DATE,
@@ -58,10 +65,21 @@ const Music = sequelize.define('Music', {
       fields: ['video_id']
     },
     {
+      fields: ['user_id']
+    },
+    {
+      fields: ['user_id', 'video_id'],
+      unique: true,
+      name: 'unique_user_video'
+    },
+    {
       fields: ['title']
     },
     {
       fields: ['channel_title']
+    },
+    {
+      fields: ['is_fav']
     }
   ]
 });

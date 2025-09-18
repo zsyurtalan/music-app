@@ -249,6 +249,8 @@ const addMusicToPlaylist = async (playlistId, video) => {
       videoId: videoId
     })
     
+    const userId = window.$keycloak?.subject || 'guest'
+    
     const response = await fetch(`http://localhost:5000/api/playlists/${playlistId}/add-music`, {
       method: 'PUT',
       headers: {
@@ -261,7 +263,8 @@ const addMusicToPlaylist = async (playlistId, video) => {
         channelTitle: video.snippet.channelTitle,
         thumbnail: video.snippet.thumbnails?.medium?.url || `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
         videoId: videoId,
-        youtubeUrl: `https://www.youtube.com/watch?v=${videoId}`
+        youtubeUrl: `https://www.youtube.com/watch?v=${videoId}`,
+        user_id: userId
       })
     })
     
@@ -518,15 +521,26 @@ const playMusic = (video) => {
   }))
 }
 
+
 // Playlist'i çal
 const playPlaylist = (playlist) => {
-  if (playlist.videos.length === 0) {
+  if (!playlist.videos || playlist.videos.length === 0) {
     alert('Bu playlist boş!')
     return
   }
   
-  const firstVideo = playlist.videos[0]
-  playMusic(firstVideo)
+  console.log('🎵 Playlist çalınıyor:', playlist.name)
+  console.log('🎵 Toplam şarkı sayısı:', playlist.videos.length)
+  
+  // Playlist'teki tüm şarkıları sırayla çal
+  playlist.videos.forEach((video, index) => {
+    setTimeout(() => {
+      console.log(`🎵 ${index + 1}/${playlist.videos.length} çalınıyor:`, video.snippet?.title || video.title)
+      playMusic(video)
+    }, index * 2000) // Her şarkı arasında 2 saniye bekle
+  })
+  
+  showMessage(`🎵 "${playlist.name}" playlist'i çalınıyor (${playlist.videos.length} şarkı)`)
 }
 
 onMounted(() => {
