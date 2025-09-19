@@ -72,6 +72,7 @@ router.post('/create', async (req, res) => {
     });
     
     console.log('✅ Yeni müzik oluşturuldu:', music.id);
+    console.log('🔍 Müzik is_fav değeri:', music.is_fav);
     res.json(music);
   } catch (error) {
     console.error('❌ Müzik oluşturma hatası:', error);

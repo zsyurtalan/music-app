@@ -7,6 +7,7 @@ const filteredFavorites = ref([])
 
 // Favori müzikleri database'den yükle (yeni yapı)
 const loadFavorites = async () => {
+  console.log('🔄 loadFavorites çağrıldı...')
   try {
     // Keycloak'dan kullanıcı ID'sini al
     const userId = window.$keycloak?.subject || 'guest'
@@ -106,6 +107,7 @@ const searchFavorites = () => {
 
 // localStorage değişikliklerini dinle
 const handleStorageChange = () => {
+  console.log('🔄 Favorites-updated event alındı, favoriler yeniden yükleniyor...')
   loadFavorites()
 }
 

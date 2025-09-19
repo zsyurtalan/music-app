@@ -20,8 +20,6 @@ export default {
       searchHistory: [], // Arama geçmişi
       showSearchHistory: false, // Arama geçmişi gösterilsin mi
       searchTimeout: null, // Debounce için timeout
-      recentVideos: [], // Son aranan videolar
-      showRecentVideosList: false // Son aranan videolar gösterilsin mi
     }
   },
   mounted() {
@@ -62,9 +60,8 @@ export default {
     async searchYouTube() {
       if (!this.searchQuery.trim()) return
       
-      // Arama geçmişini ve son aranan videoları gizle
+      // Arama geçmişini gizle
       this.showSearchHistory = false
-      this.showRecentVideosList = false
       
       this.loading = true
       this.hasSearched = true
@@ -84,19 +81,18 @@ export default {
           this.videos = response
           console.log('✅ Videolar yüklendi (Array):', this.videos.length)
           
-          // Son aranan videoları kaydet
-          this.saveRecentVideos(response)
         } else if (response.data && Array.isArray(response.data)) {
           this.videos = response.data
           console.log('✅ Videolar yüklendi (response.data):', this.videos.length)
           
-          // Son aranan videoları kaydet
-          this.saveRecentVideos(response.data)
         } else {
           console.error('❌ Beklenmeyen response formatı:', response)
           this.videos = []
           this.showMessage('❌ Arama sonuçları alınamadı')
         }
+        
+        // Arama geçmişini kaydet
+        await this.saveSearchHistory()
       } catch (error) {
         console.error('❌ YouTube arama hatası:', error)
         console.error('❌ Error response:', error.response)
@@ -187,6 +183,7 @@ export default {
           channel_title: video.snippet?.channelTitle || video.channelTitle,
           thumbnail_url: video.snippet?.thumbnails?.medium?.url || video.thumbnail || `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
           youtube_url: `https://www.youtube.com/watch?v=${videoId}`,
+          is_fav: true // Favori olarak işaretle
         }
         
         // Müziği database'e ekle
@@ -204,6 +201,7 @@ export default {
           this.showMessage(`✅ ${video.snippet?.title || video.title} favorilere eklendi!`)
           
           // Event dispatch et
+          console.log('🔄 Favorites-updated event dispatch ediliyor...')
           window.dispatchEvent(new CustomEvent('favorites-updated'))
         } else {
           // Müzik zaten varsa, favori yap
@@ -221,6 +219,7 @@ export default {
             this.showMessage(`✅ ${video.snippet?.title || video.title} favorilere eklendi!`)
             
             // Event dispatch et
+            console.log('🔄 Favorites-updated event dispatch ediliyor (toggle)...')
             window.dispatchEvent(new CustomEvent('favorites-updated'))
           } else {
             const errorData = await toggleResponse.json()
@@ -386,6 +385,38 @@ export default {
       }
     },
 
+    // Arama geçmişini kaydet
+    async saveSearchHistory() {
+      if (!this.isAuthenticated || !this.searchQuery.trim()) return
+      
+      try {
+        const userId = window.$keycloak?.subject
+        if (!userId) return
+        
+        const response = await fetch(`http://localhost:5000/api/music/search-history`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('keycloak-token')}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            userId: userId,
+            query: this.searchQuery.trim()
+          })
+        })
+        
+        if (response.ok) {
+          console.log('✅ Arama geçmişi kaydedildi:', this.searchQuery)
+          // Arama geçmişini yeniden yükle
+          await this.loadSearchHistory()
+        } else {
+          console.error('❌ Arama geçmişi kaydedilemedi:', response.status)
+        }
+      } catch (error) {
+        console.error('❌ Arama geçmişi kaydetme hatası:', error)
+      }
+    },
+
     // Arama kutusuna odaklanıldığında
     onSearchFocus() {
       if (this.isAuthenticated) {
@@ -393,8 +424,6 @@ export default {
         this.loadSearchHistory()
       }
       
-      // Son aranan videoları göster
-      this.showRecentVideos()
     },
 
     // Arama geçmişini gizle
@@ -405,60 +434,6 @@ export default {
       }, 200)
     },
 
-    // Son aranan videoları göster
-    showRecentVideos() {
-      // localStorage'dan son aranan videoları al
-      const recentVideos = JSON.parse(localStorage.getItem('recent-videos') || '[]')
-      
-      if (recentVideos.length > 0) {
-        // Son 5 videoyu al
-        this.recentVideos = recentVideos.slice(0, 5)
-        this.showRecentVideosList = true
-        console.log('📺 Son aranan videolar gösteriliyor:', this.recentVideos.length, 'adet')
-      }
-    },
-
-    // Son aranan videoları kaydet
-    saveRecentVideos(videos) {
-      if (!videos || videos.length === 0) return
-      
-      // Mevcut videoları al
-      let recentVideos = JSON.parse(localStorage.getItem('recent-videos') || '[]')
-      
-      // Yeni videoları ekle (tekrar edenleri kaldır)
-      videos.forEach(video => {
-        const videoId = video.id?.videoId || video.videoId
-        if (videoId) {
-          // Aynı video varsa kaldır
-          recentVideos = recentVideos.filter(v => (v.id?.videoId || v.videoId) !== videoId)
-          
-          // Yeni videoyu başa ekle
-          recentVideos.unshift({
-            id: { videoId: videoId },
-            snippet: {
-              title: video.snippet?.title || video.title,
-              channelTitle: video.snippet?.channelTitle || video.channelTitle,
-              thumbnails: {
-                medium: { 
-                  url: video.snippet?.thumbnails?.medium?.url || 
-                       video.thumbnail || 
-                       `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`
-                }
-              }
-            },
-            youtubeUrl: `https://www.youtube.com/watch?v=${videoId}`,
-            timestamp: Date.now()
-          })
-        }
-      })
-      
-      // Son 10 videoyu sakla
-      recentVideos = recentVideos.slice(0, 10)
-      
-      // localStorage'a kaydet
-      localStorage.setItem('recent-videos', JSON.stringify(recentVideos))
-      console.log('💾 Son aranan videolar kaydedildi:', recentVideos.length, 'adet')
-    },
 
     // Arama geçmişinden müzik seç
     selectFromHistory(music) {
@@ -487,6 +462,17 @@ export default {
           thumbnails: { medium: { url: music.thumbnail_url } }
         }
       })
+    },
+
+
+    // Arama kutusunu temizle
+    clearSearch() {
+      console.log('🧹 Arama kutusu temizleniyor')
+      this.searchQuery = ''
+      this.videos = []
+      this.hasSearched = false
+      this.loading = false
+      this.showSearchHistory = false
     },
 
     // Zaman formatla
@@ -703,34 +689,16 @@ export default {
           placeholder="Müzik ara..."
           class="search-input"
         >
+        <button 
+          v-if="searchQuery.trim()" 
+          @click="clearSearch"
+          class="clear-search-btn"
+          title="Aramayı temizle"
+        >
+          ✕
+        </button>
         
         <!-- Arama geçmişi dropdown -->
-        <!-- Son Aranan Videolar -->
-        <div v-if="showRecentVideosList && recentVideos.length > 0" class="recent-videos">
-          <div class="recent-videos-header">
-            <h4>📺 Son Aranan Videolar</h4>
-            <span class="recent-count">{{ recentVideos.length }} video</span>
-          </div>
-          <div class="recent-videos-grid">
-            <div 
-              v-for="video in recentVideos" 
-              :key="video.id?.videoId || video.videoId"
-              @click="playMusic(video)"
-              class="recent-video-item"
-            >
-              <div class="recent-video-thumbnail">
-                <img :src="video.snippet?.thumbnails?.medium?.url || `https://img.youtube.com/vi/${video.id?.videoId || video.videoId}/hqdefault.jpg`" 
-                     :alt="video.snippet?.title" />
-                <div class="play-overlay">▶️</div>
-              </div>
-              <div class="recent-video-info">
-                <h5 class="recent-video-title">{{ video.snippet?.title }}</h5>
-                <p class="recent-video-channel">{{ video.snippet?.channelTitle }}</p>
-              </div>
-            </div>
-          </div>
-        </div>
-
         <!-- Arama Geçmişi -->
         <div v-if="showSearchHistory && searchHistory.length > 0" class="search-history">
           <div class="search-history-header">
@@ -886,6 +854,40 @@ export default {
   font-weight: 400;
 }
 
+/* Temizleme Butonu */
+.clear-search-btn {
+  position: absolute;
+  right: 15px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: rgba(255, 255, 255, 0.9);
+  border: none;
+  border-radius: 50%;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: bold;
+  color: #666;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  z-index: 10;
+}
+
+.clear-search-btn:hover {
+  background: rgba(255, 0, 0, 0.1);
+  color: #ff4444;
+  transform: translateY(-50%) scale(1.1);
+  box-shadow: 0 4px 12px rgba(255, 0, 0, 0.2);
+}
+
+.clear-search-btn:active {
+  transform: translateY(-50%) scale(0.95);
+}
+
 /* Arama Geçmişi Stilleri */
 .search-history {
   position: absolute;
@@ -965,134 +967,6 @@ export default {
   border-bottom: none;
 }
 
-/* Son Aranan Videolar */
-.recent-videos {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  right: 0;
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(20px);
-  border-radius: 15px;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  z-index: 1000;
-  margin-top: 8px;
-  max-height: 400px;
-  overflow-y: auto;
-}
-
-.recent-videos-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px 20px 12px;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
-}
-
-.recent-videos-header h4 {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 600;
-  color: #333;
-}
-
-.recent-count {
-  background: rgba(102, 126, 234, 0.1);
-  color: #667eea;
-  padding: 4px 8px;
-  border-radius: 12px;
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.recent-videos-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 12px;
-  padding: 16px 20px;
-}
-
-.recent-video-item {
-  display: flex;
-  flex-direction: column;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  border-radius: 12px;
-  overflow: hidden;
-  background: rgba(255, 255, 255, 0.8);
-  border: 1px solid rgba(0, 0, 0, 0.05);
-}
-
-.recent-video-item:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
-  background: rgba(255, 255, 255, 0.95);
-}
-
-.recent-video-thumbnail {
-  position: relative;
-  width: 100%;
-  height: 120px;
-  overflow: hidden;
-}
-
-.recent-video-thumbnail img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  transition: transform 0.2s ease;
-}
-
-.recent-video-item:hover .recent-video-thumbnail img {
-  transform: scale(1.05);
-}
-
-.play-overlay {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  background: rgba(0, 0, 0, 0.7);
-  color: white;
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 16px;
-  opacity: 0;
-  transition: all 0.2s ease;
-}
-
-.recent-video-item:hover .play-overlay {
-  opacity: 1;
-}
-
-.recent-video-info {
-  padding: 12px;
-  flex: 1;
-}
-
-.recent-video-title {
-  margin: 0 0 6px 0;
-  font-size: 13px;
-  font-weight: 600;
-  color: #333;
-  line-height: 1.3;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.recent-video-channel {
-  margin: 0;
-  font-size: 11px;
-  color: #666;
-  opacity: 0.8;
-}
 
 .history-thumbnail {
   width: 48px;
@@ -1496,6 +1370,13 @@ export default {
   .youtube-search h2 {
     font-size: 1.8rem;
     margin-bottom: 1.5rem;
+  }
+  
+  .clear-search-btn {
+    width: 28px;
+    height: 28px;
+    font-size: 12px;
+    right: 12px;
   }
   
   .search-history {

@@ -143,6 +143,7 @@ router.get('/user/:userId/favorite-musics', async (req, res) => {
     });
 
     console.log('✅ Favori müzikler getirildi:', musics.length, 'adet');
+    console.log('🔍 Favori müzikler:', musics.map(m => ({ id: m.id, title: m.title, is_fav: m.is_fav })));
     res.json(musics);
   } catch (error) {
     console.error('❌ Favori müzik getirme hatası:', error);
