@@ -23,12 +23,23 @@ export default {
     }
   },
   mounted() {
+    console.log('🔄 YouTubeSearch mounted')
+    console.log('🔍 window.$keycloak:', window.$keycloak)
+    console.log('🔍 window.$keycloak?.authenticated:', window.$keycloak?.authenticated)
+    
     this.loadPlaylists()
     window.addEventListener('playlists-updated', this.loadPlaylists)
     
     // Keycloak durumunu kontrol et
     if (window.$keycloak) {
       this.isAuthenticated = window.$keycloak.authenticated
+      console.log('✅ isAuthenticated set to:', this.isAuthenticated)
+      
+      // Eğer giriş yapmışsa playlist'leri yükle
+      if (this.isAuthenticated) {
+        console.log('🔄 Mounted - Giriş yapmış kullanıcı, playlist\'ler yükleniyor...')
+        this.loadPlaylists()
+      }
       
       // Login sonrası bekleyen arama varsa devam et
       if (this.pendingSearchQuery && this.pendingVideos.length > 0) {
@@ -38,6 +49,8 @@ export default {
         this.pendingSearchQuery = ''
         this.pendingVideos = []
       }
+    } else {
+      console.log('❌ window.$keycloak bulunamadı')
     }
     
     // Keycloak login event'ini dinle
@@ -282,8 +295,6 @@ export default {
       
       // Backend'e playlist'e ekle
       try {
-        console.log('🔄 Müzik playlist\'e ekleniyor:', video.snippet?.title || video.title)
-        
         const userId = window.$keycloak?.subject || 'guest'
         
         const response = await fetch(`http://localhost:5000/api/playlists/${playlistId}/add-music`, {
@@ -305,9 +316,6 @@ export default {
         
         if (response.ok) {
           const updatedPlaylist = await response.json()
-          console.log('✅ Müzik playlist\'e eklendi')
-          console.log('🔍 Updated playlist:', updatedPlaylist)
-          console.log('🔍 Updated musics:', updatedPlaylist.musics)
           
           // Playlist'i güncelle
           const playlistIndex = this.playlists.findIndex(p => p.id === playlistId)
@@ -333,22 +341,21 @@ export default {
               ...this.playlists[playlistIndex],
               videos: videos
             }
-            console.log('✅ Playlist güncellendi:', this.playlists[playlistIndex])
-            console.log('✅ Videos count:', videos.length)
           }
           
           this.showMessage(`✅ "${video.snippet?.title || video.title}" "${playlist.name}" playlist'ine eklendi!`)
+          
+          // Diğer component'leri güncelle
+          window.dispatchEvent(new CustomEvent('playlists-updated'))
+          
           this.closePlaylistMenu()
         } else {
           const errorData = await response.json()
-          console.error('❌ Müzik ekleme hatası:', errorData)
           this.showMessage(`❌ Müzik eklenemedi: ${errorData.error}`, 'error')
         }
       } catch (error) {
-        console.error('❌ Müzik ekleme hatası:', error)
         this.showMessage('❌ Müzik eklenemedi!', 'error')
       }
-      this.closePlaylistMenu()
     },
     
     // Playlist Manager'a git
@@ -492,8 +499,12 @@ export default {
     },
 
     async loadPlaylists() {
+      console.log('🔄 loadPlaylists çağrıldı')
+      console.log('🔍 isAuthenticated:', this.isAuthenticated)
+      
       // Sadece giriş yapmış kullanıcılar için playlist'leri yükle
       if (!this.isAuthenticated) {
+        console.log('❌ Kullanıcı giriş yapmamış - playlist yüklenmiyor')
         this.playlists = []
         return
       }
@@ -502,6 +513,8 @@ export default {
         const userId = window.$keycloak?.subject || 'guest'
         const token = localStorage.getItem('keycloak-token')
         
+        console.log('🔍 userId:', userId)
+        console.log('🔍 token:', token ? 'Mevcut' : 'Yok')
         
         if (userId === 'guest') {
           console.log('👤 Misafir kullanıcı - playlist yüklenmiyor')
@@ -511,6 +524,10 @@ export default {
         
         console.log('🔄 Playlist\'ler yükleniyor, kullanıcı ID:', userId)
         console.log('🔑 Token:', token ? 'Mevcut' : 'Yok')
+        
+        console.log('🔗 API URL:', `http://localhost:5000/api/playlists/user/${userId}`)
+        console.log('🔑 Token değeri:', token)
+        console.log('🔑 Token uzunluğu:', token ? token.length : 0)
         
         const response = await fetch(`http://localhost:5000/api/playlists/user/${userId}`, {
           method: 'GET',
@@ -526,7 +543,10 @@ export default {
         if (response.ok) {
           const data = await response.json()
           console.log('📋 Backend\'den gelen data:', data)
-        this.playlists = data.map(playlist => {
+          console.log('📋 Data type:', typeof data)
+          console.log('📋 Data length:', Array.isArray(data) ? data.length : 'Not array')
+          
+          this.playlists = data.map(playlist => {
             
             // Musics alanını güvenli şekilde işle (yeni database yapısı)
             let videos = [];
@@ -587,6 +607,8 @@ export default {
         this.playlists = saved ? JSON.parse(saved) : []
         console.log('📱 Fallback: localStorage\'dan yüklendi:', this.playlists.length, 'adet')
       }
+      
+      console.log('🏁 loadPlaylists tamamlandı, final playlists length:', this.playlists.length)
     },
     showLoginPrompt(message) {
       const confirmed = confirm(message + '\n\nGiriş yapmak ister misiniz?')
@@ -594,6 +616,7 @@ export default {
         this.login()
       }
     },
+  
     
     login() {
       if (window.$keycloak) {
@@ -618,8 +641,10 @@ export default {
     onKeycloakLogin() {
       console.log('✅ Keycloak login eventi alındı')
       this.isAuthenticated = true
+      console.log('✅ isAuthenticated set to:', this.isAuthenticated)
       
       // Playlist'leri yükle
+      console.log('🔄 Login sonrası playlist\'ler yükleniyor...')
       this.loadPlaylists()
       
       // Bekleyen arama sonuçlarını göster
