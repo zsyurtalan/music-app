@@ -124,7 +124,6 @@ const loadPlaylists = async () => {
         return {
           id: playlist.id,
           name: playlist.name,
-          description: playlist.description || '',
           is_public: playlist.is_public || false,
           videos: videos,
           created: playlist.created_at || new Date().toISOString(),
@@ -356,7 +355,6 @@ const createPlaylist = async () => {
       body: JSON.stringify({
         user_id: userId,
         name: newPlaylistName.value,
-        description: '',
         is_public: false
       })
     })
@@ -371,7 +369,6 @@ const createPlaylist = async () => {
       playlists.value.push({
         id: data.id,
         name: data.name,
-        description: data.description || '',
         is_public: data.is_public || false,
         videos: data.videos || [],
         created: data.created_at || new Date().toISOString(),
@@ -725,9 +722,13 @@ onUnmounted(() => {
 
 .playlist-header h2 {
   color: var(--text);
-  font-size: 1.5rem;
-  font-weight: 600;
+  font-size: 1.8rem;
+  font-weight: 700;
   margin: 0;
+  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 .create-btn {
@@ -1203,6 +1204,11 @@ onUnmounted(() => {
   
   .playlist-actions {
     flex-direction: column;
+  }
+  
+  .playlist-header h2 {
+    font-size: 1.5rem;
+    text-align: center;
   }
 }
 </style>

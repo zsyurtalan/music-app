@@ -41,7 +41,7 @@ router.post('/', async (req, res) => {
     console.log('🔄 Yeni playlist oluşturuluyor:', req.body);
     console.log('🔍 Token userId:', req.userId);
     
-    const { user_id, name, description, is_public, is_fav } = req.body;
+    const { user_id, name, is_public } = req.body;
     
     if (!user_id || !name) {
       console.log('❌ Eksik parametreler:', { user_id, name });
@@ -51,9 +51,7 @@ router.post('/', async (req, res) => {
     const playlist = await Playlist.create({
       user_id,
       name,
-      description: description || '',
-      is_public: is_public || false,
-      is_fav: is_fav || false
+      is_public: is_public || false
     });
     
     console.log('✅ Playlist oluşturuldu:', playlist.id);
@@ -69,12 +67,15 @@ router.get('/user/:userId', async (req, res) => {
   try {
     console.log('🔍 Playlist isteği - Token userId:', req.userId);
     console.log('🔍 Playlist isteği - Param userId:', req.params.userId);
+    console.log('🔍 Authorization header:', req.headers.authorization ? 'Mevcut' : 'Yok');
     
     // Token'dan gelen kullanıcı ID'si ile parametre ID'sini karşılaştır
     if (req.userId && req.userId !== req.params.userId) {
       console.log('❌ Yetkisiz erişim denemesi:', req.userId, '!=', req.params.userId);
       return res.status(403).json({ error: 'Bu kullanıcının playlistlerine erişim yetkiniz yok' });
     }
+    
+    console.log('🔍 Database\'de playlist aranıyor, user_id:', req.params.userId);
     
     const playlists = await Playlist.findAll({
       where: { user_id: req.params.userId },
@@ -86,6 +87,9 @@ router.get('/user/:userId', async (req, res) => {
         }
       }]
     });
+    
+    console.log('📋 Bulunan playlist sayısı:', playlists.length);
+    console.log('📋 Playlist detayları:', playlists.map(p => ({ id: p.id, name: p.name, user_id: p.user_id })));
     
     console.log('✅ Playlist\'ler getirildi:', playlists.length, 'adet');
     res.json(playlists);
@@ -160,8 +164,7 @@ router.get('/user/:userId/favorites', async (req, res) => {
     
     const playlists = await Playlist.findAll({
       where: { 
-        user_id: req.params.userId,
-        is_fav: true
+        user_id: req.params.userId
       },
       include: [{
         model: Music,
@@ -380,49 +383,6 @@ router.put('/music/:musicId/toggle-favorite', async (req, res) => {
     });
   } catch (error) {
     console.error('❌ Müzik favori toggle hatası:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Playlist'i favori olarak işaretle/çıkar
-router.put('/:id/toggle-favorite', async (req, res) => {
-  try {
-    console.log('⭐ Favori toggle isteği:', req.params.id);
-    console.log('🔍 Token userId:', req.userId);
-    
-    const playlist = await Playlist.findByPk(req.params.id);
-    
-    if (!playlist) {
-      console.log('❌ Playlist bulunamadı:', req.params.id);
-      return res.status(404).json({ error: 'Playlist bulunamadı' });
-    }
-    
-    // Kullanıcı yetkisi kontrolü
-    if (req.userId && req.userId !== playlist.user_id) {
-      console.log('❌ Yetkisiz erişim:', req.userId, '!=', playlist.user_id);
-      return res.status(403).json({ error: 'Bu playlist\'e erişim yetkiniz yok' });
-    }
-    
-    // Favori durumunu tersine çevir
-    const newFavoriteStatus = !playlist.is_fav;
-    await playlist.update({ is_fav: newFavoriteStatus });
-    
-    console.log('✅ Playlist favori durumu güncellendi:', newFavoriteStatus);
-    
-    // Güncellenmiş playlist'i getir (müziklerle birlikte)
-    const updatedPlaylist = await Playlist.findByPk(playlist.id, {
-      include: [{
-        model: Music,
-        as: 'musics',
-        through: {
-          attributes: ['added_at', 'order_index']
-        }
-      }]
-    });
-    
-    res.json(updatedPlaylist);
-  } catch (error) {
-    console.error('❌ Favori toggle hatası:', error);
     res.status(500).json({ error: error.message });
   }
 });

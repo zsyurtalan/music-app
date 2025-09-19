@@ -17,22 +17,11 @@ const Playlist = sequelize.define('Playlist', {
     allowNull: false,
     comment: 'Playlist name'
   },
-  description: {
-    type: DataTypes.TEXT,
-    allowNull: true,
-    comment: 'Playlist description'
-  },
   is_public: {
     type: DataTypes.BOOLEAN,
     allowNull: false,
     defaultValue: false,
     comment: 'Is playlist public'
-  },
-  is_fav: {
-    type: DataTypes.BOOLEAN,
-    allowNull: false,
-    defaultValue: false,
-    comment: 'Is playlist favorite'
   },
   created_at: {
     type: DataTypes.DATE,

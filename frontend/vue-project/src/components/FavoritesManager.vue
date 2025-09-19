@@ -353,7 +353,7 @@ onUnmounted(() => {
   <div class="favorites-manager">
     <div class="favorites-header">
       <div class="header-left">
-        <h2>❤️ Favori Müziklerim</h2>
+        <h2>❤️ Favorilerim</h2>
         <span class="count-badge">{{ favorites.length }}</span>
       </div>
       <div class="header-actions">
@@ -499,6 +499,7 @@ onUnmounted(() => {
   font-size: 1.8rem;
   font-weight: 700;
   margin: 0;
+  text-align: left;
   background: linear-gradient(135deg, var(--primary), var(--secondary));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -1290,7 +1291,7 @@ onUnmounted(() => {
   
   .favorites-header h2 {
     font-size: 1.5rem;
-    text-align: center;
+    text-align: left;
   }
   
   .count-badge {
@@ -1428,4 +1429,5 @@ onUnmounted(() => {
   background: linear-gradient(135deg, #ffd700 0%, #ffed4e 100%);
   color: #333;
 }
+
 </style>
